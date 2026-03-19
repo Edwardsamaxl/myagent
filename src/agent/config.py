@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -14,9 +15,21 @@ class AgentConfig:
     max_steps: int
     temperature: float
     max_tokens: int
+    web_host: str
+    web_port: int
+    data_dir: Path
+    workspace_dir: Path
+    skills_dir: Path
+    memory_file: Path
+    sessions_file: Path
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
+        data_dir = Path(os.getenv("DATA_DIR", "./runtime")).resolve()
+        workspace_dir = Path(os.getenv("WORKSPACE_DIR", "./workspace")).resolve()
+        skills_dir = workspace_dir / "skills"
+        memory_file = workspace_dir / "MEMORY.md"
+        sessions_file = data_dir / "sessions.json"
         return cls(
             model_provider=os.getenv("MODEL_PROVIDER", "ollama").strip(),
             model_name=os.getenv("MODEL_NAME", "qwen2.5:7b").strip(),
@@ -25,6 +38,13 @@ class AgentConfig:
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
             max_steps=int(os.getenv("MAX_STEPS", "6")),
             temperature=float(os.getenv("TEMPERATURE", "0.2")),
-            max_tokens=int(os.getenv("MAX_TOKENS", "512")),
+            max_tokens=int(os.getenv("MAX_TOKENS", "768")),
+            web_host=os.getenv("WEB_HOST", "127.0.0.1").strip(),
+            web_port=int(os.getenv("WEB_PORT", "7860")),
+            data_dir=data_dir,
+            workspace_dir=workspace_dir,
+            skills_dir=skills_dir,
+            memory_file=memory_file,
+            sessions_file=sessions_file,
         )
 

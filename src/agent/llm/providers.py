@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from .config import AgentConfig
+from ..config import AgentConfig
 
 
 Message = dict[str, str]
@@ -117,4 +117,3 @@ def build_model_provider(config: AgentConfig) -> ModelProvider:
     raise ValueError(
         "MODEL_PROVIDER 不支持。可选值: ollama | openai_compatible | mock"
     )
-

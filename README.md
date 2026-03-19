@@ -1,120 +1,83 @@
-# mini-openclaw-agent
+# mini-evolving-agent
 
-一个可在本地运行的最小智能体项目，目标是：
-- 使用公开可用模型（优先免费/本地）；
-- 提供可替换模型接口（不绑定单一厂商）；
-- 保持结构简单，便于后续扩展到更复杂的任务编排。
+一个可本地运行、可视化操作的最小 Agent。核心目标：
+- 默认使用本地 `ollama/qwen2.5:7b`；
+- 通过 Web UI 聊天，不依赖 CLI 操作；
+- 支持模型热切换（provider + model_name）；
+- 保留 `MEMORY.md` 与 `skills/*.md`，让 Agent 可持续演化；
+- 保留工具调用闭环（模型 -> 工具 -> 结果回灌 -> 回复）。
 
-## 可行性结论（先说结论）
-
-完全可行，而且对个人开发者友好。
-
-如果你只追求本地可运行 + 可换模型接口，技术难度是**中低**，关键挑战不在"能不能做"，而在"如何把边界定义清楚"：
-- 最小阶段先做单代理循环、少量工具、可插拔模型适配层；
-- 后续再加记忆、任务分解、并发执行、浏览器自动化等。
-
-## 为什么它可行
-
-- 现在有可直接本地跑的模型生态（如 Ollama），以及大量 OpenAI 兼容接口；
-- 智能体核心本质是：`模型 + 提示词 + 工具调用循环`；
-- 通过一个统一 `ModelProvider` 抽象，就可以在本地模型、云端免费额度模型之间切换。
-
-## 这个项目当前实现了什么
-
-- 可插拔模型层（`ollama` / `openai_compatible` / `mock`）；
-- 一个最小 Agent Loop（支持工具调用）；
-- 内置工具：
-  - `get_time`：获取当前本地时间；
-  - `calculate`：安全地做基础算术表达式计算；
-- 命令行交互入口（`main.py`）。
-
-## 项目结构
+## 分层结构
 
 ```text
-mini-openclaw-agent/
-├─ main.py
+myagent/
+├─ main.py                      # 启动入口（Web）
 ├─ requirements.txt
 ├─ .env.example
-└─ src/
-   └─ mini_openclaw_agent/
-      ├─ __init__.py
-      ├─ config.py
-      ├─ providers.py
-      ├─ tools.py
-      └─ agent.py
+├─ runtime/                     # 运行时数据（会话等）
+├─ workspace/                   # 可进化资产（MEMORY + skills）
+└─ src/agent/
+   ├─ config.py                 # 配置层
+   ├─ core/                     # 领域核心层（loop + memory + skill + session）
+   ├─ llm/                      # 模型提供商层
+   ├─ tools/                    # 工具注册层
+   ├─ application/              # 应用服务层（编排）
+   ├─ interfaces/               # 接口层（Web API + UI）
+   ├─ agent.py                  # 兼容导出（指向 core）
+   ├─ providers.py              # 兼容导出（指向 llm）
+   ├─ tools.py                  # 兼容导出（指向 tools）
+   ├─ service.py                # 兼容导出（指向 application）
+   └─ web.py                    # 兼容导出（指向 interfaces）
 ```
 
-## 快速开始
+## 快速启动
 
-1) 创建并激活虚拟环境（可选但推荐）
-
-```powershell
-cd C:\Users\Ed\mini-openclaw-agent
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-2) 安装依赖
+1) 安装依赖
 
 ```powershell
 pip install -r requirements.txt
 ```
 
-3) 配置环境变量
+2) 配置环境变量
 
 ```powershell
 copy .env.example .env
 ```
 
-按需编辑 `.env`（示例见下文）。
-
-4) 启动
+3) 启动
 
 ```powershell
 python main.py
 ```
 
-输入 `exit` 可退出。
+4) 打开页面
 
-## 环境变量说明
+`http://127.0.0.1:7860`
 
-- `MODEL_PROVIDER`
-  - `ollama`：本地 Ollama（推荐起步）；
-  - `openai_compatible`：任意 OpenAI 兼容接口；
-  - `mock`：本地回显调试。
-- `MODEL_NAME`
-  - 例如 `qwen2.5:7b`（Ollama）；
-  - 或兼容接口中的模型名。
-- `OLLAMA_BASE_URL`
-  - 默认 `http://localhost:11434`。
-- `OPENAI_BASE_URL`
-  - 默认 `https://api.openai.com`。
-- `OPENAI_API_KEY`
-  - 仅 `openai_compatible` 模式需要。
-- `MAX_STEPS`
-  - 单轮最多工具调用步数，默认 `6`。
-- `TEMPERATURE`
-  - 采样温度，默认 `0.2`。
-- `MAX_TOKENS`
-  - 单次生成最大 token，默认 `512`。
+## Web UI 功能
 
-## 推荐起步配置（本地免费）
+- 聊天窗口（支持工具调用链路）；
+- Session ID 切换；
+- Provider / Model 切换并立即生效；
+- 在线编辑 `MEMORY.md`；
+- 在线读取与保存 `skills/*.md`。
 
-在 `.env` 中设置：
+## 可进化机制
 
-```env
-MODEL_PROVIDER=ollama
-MODEL_NAME=qwen2.5:7b
-OLLAMA_BASE_URL=http://localhost:11434
-```
+- **长期记忆**：写入 `workspace/MEMORY.md`；
+- **技能学习**：保存到 `workspace/skills/*.md`；
+- **工具调用**：模型可调用内置工具操作记忆、技能与 workspace 文件；
+- **会话沉淀**：历史写入 `runtime/sessions.json`。
 
-并确保你已安装并启动 Ollama，且本地已有对应模型。
+## 关键环境变量
 
-## 后续扩展建议
-
-- 增加文件读写、网页检索、命令执行等工具（注意安全沙箱）；
-- 加入短期记忆（会话）与长期记忆（向量库）；
-- 把 Agent Loop 拆成规划器 + 执行器；
-- 加入任务状态机和失败重试策略；
-- 用 FastAPI 封装成服务接口，方便接前端。
+- `MODEL_PROVIDER=ollama|openai_compatible|mock`
+- `MODEL_NAME=qwen2.5:7b`
+- `OLLAMA_BASE_URL=http://localhost:11434`
+- `OPENAI_BASE_URL=https://api.openai.com`
+- `OPENAI_API_KEY=...`（仅 openai_compatible 需要）
+- `WEB_HOST=127.0.0.1`
+- `WEB_PORT=7860`
+- `DATA_DIR=./runtime`
+- `WORKSPACE_DIR=./workspace`
 

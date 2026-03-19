@@ -3,14 +3,17 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from .config import AgentConfig
-from .providers import Message, ModelProvider
-from .tools import Tool
+from ..config import AgentConfig
+from ..llm.providers import Message, ModelProvider
+from ..tools.registry import Tool
 
 
 SYSTEM_PROMPT = """你是一个可调用工具的助手。
 你有以下工具可用（name: description）：
 {tool_desc}
+
+你有以下长期上下文（记忆与技能）：
+{long_context}
 
 当你需要调用工具时，请严格只输出 JSON，格式如下：
 {{"tool":"工具名","input":"传给工具的字符串参数"}}
@@ -23,6 +26,8 @@ SYSTEM_PROMPT = """你是一个可调用工具的助手。
 class AgentResult:
     answer: str
     steps_used: int
+    messages: list[Message]
+    tool_calls: list[str]
 
 
 class SimpleAgent:
@@ -36,15 +41,24 @@ class SimpleAgent:
         self.model = model
         self.tools = tools
 
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, long_context: str) -> str:
         desc = "\n".join(f"- {t.name}: {t.description}" for t in self.tools.values())
-        return SYSTEM_PROMPT.format(tool_desc=desc)
+        context = long_context.strip() or "暂无。"
+        return SYSTEM_PROMPT.format(tool_desc=desc, long_context=context)
 
-    def run(self, user_input: str) -> AgentResult:
+    def run(
+        self,
+        user_input: str,
+        history_messages: list[Message] | None = None,
+        long_context: str = "",
+    ) -> AgentResult:
+        history_messages = history_messages or []
         messages: list[Message] = [
-            {"role": "system", "content": self._build_system_prompt()},
-            {"role": "user", "content": user_input},
+            {"role": "system", "content": self._build_system_prompt(long_context)},
+            *history_messages,
         ]
+        messages.append({"role": "user", "content": user_input})
+        tool_calls: list[str] = []
 
         for step in range(1, self.config.max_steps + 1):
             model_text = self.model.generate(
@@ -55,7 +69,12 @@ class SimpleAgent:
 
             tool_call = self._try_parse_tool_call(model_text)
             if tool_call is None:
-                return AgentResult(answer=model_text, steps_used=step)
+                return AgentResult(
+                    answer=model_text,
+                    steps_used=step,
+                    messages=messages + [{"role": "assistant", "content": model_text}],
+                    tool_calls=tool_calls,
+                )
 
             tool_name = tool_call.get("tool", "").strip()
             tool_input = tool_call.get("input", "")
@@ -63,7 +82,11 @@ class SimpleAgent:
             if not tool:
                 tool_result = f"工具不存在: {tool_name}"
             else:
-                tool_result = tool.func(str(tool_input))
+                try:
+                    tool_result = tool.func(str(tool_input))
+                except Exception as exc:  # noqa: BLE001
+                    tool_result = f"工具执行异常: {exc}"
+            tool_calls.append(f"{tool_name}({tool_input})")
 
             messages.append({"role": "assistant", "content": model_text})
             messages.append(
@@ -76,6 +99,8 @@ class SimpleAgent:
         return AgentResult(
             answer=f"已达到最大步骤限制（{self.config.max_steps}），请简化问题后再试。",
             steps_used=self.config.max_steps,
+            messages=messages,
+            tool_calls=tool_calls,
         )
 
     @staticmethod
@@ -91,4 +116,3 @@ class SimpleAgent:
         if "tool" not in data or "input" not in data:
             return None
         return {"tool": str(data["tool"]), "input": str(data["input"])}
-

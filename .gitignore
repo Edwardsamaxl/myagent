@@ -2,3 +2,7 @@
 __pycache__/
 *.pyc
 .env
+runtime/
+workspace/
+_run.bat
+_test*.bat
