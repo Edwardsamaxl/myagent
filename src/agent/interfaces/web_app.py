@@ -67,6 +67,17 @@ INDEX_HTML = """<!doctype html>
         <button onclick="saveSkill()">保存 Skill</button>
         <div id="skillsList" class="hint"></div>
       </div>
+
+      <div class="box">
+        <h4>RAG 文档摄入（骨架）</h4>
+        <label>Doc ID</label>
+        <input id="docId" value="finance-doc-001" />
+        <label>Source</label>
+        <input id="docSource" value="manual-input" />
+        <label>Content</label>
+        <textarea id="docContent" rows="8" placeholder="粘贴公告、研报或制度文本"></textarea>
+        <button onclick="ingestDoc()">写入检索库</button>
+      </div>
     </div>
 
     <div class="right">
@@ -117,7 +128,8 @@ INDEX_HTML = """<!doctype html>
       try{
         const r = await api("/api/chat", "POST", {session_id, message: msg});
         const tools = r.tool_calls.length ? "\\n[工具] " + r.tool_calls.join(" | ") : "";
-        add("assistant", r.answer + tools);
+        const rag = r.rag && r.rag.citations ? ("\\n[RAG引用]\\n" + r.rag.citations.join("\\n")) : "";
+        add("assistant", r.answer + tools + rag);
       }catch(err){
         add("assistant", "请求失败: " + err.message);
       }
@@ -151,6 +163,18 @@ INDEX_HTML = """<!doctype html>
       add("assistant", r.message);
       const s = await api("/api/state");
       document.getElementById("skillsList").innerText = "已安装技能: " + (s.skills.join(", ") || "无");
+    }
+
+    async function ingestDoc(){
+      const doc_id = document.getElementById("docId").value.trim();
+      const source = document.getElementById("docSource").value.trim();
+      const content = document.getElementById("docContent").value.trim();
+      if(!doc_id || !source || !content){
+        alert("doc_id/source/content 不能为空");
+        return;
+      }
+      const r = await api("/api/ingest", "POST", {doc_id, source, content});
+      add("assistant", `文档已入库: ${r.doc_id}, chunks=${r.deduplicated_chunks}, trace=${r.trace_id}`);
     }
 
     document.getElementById("input").addEventListener("keydown", (e) => {
@@ -220,5 +244,32 @@ def create_app(config: AgentConfig | None = None) -> Flask:
             return jsonify({"error": "name 不能为空"}), 400
         msg = service.save_skill(name, content)
         return jsonify({"message": msg})
+
+    @app.post("/api/ingest")
+    def ingest_document():
+        payload = request.get_json(force=True)
+        doc_id = str(payload.get("doc_id", "")).strip()
+        source = str(payload.get("source", "")).strip()
+        content = str(payload.get("content", "")).strip()
+        if not doc_id or not source or not content:
+            return jsonify({"error": "doc_id/source/content 不能为空"}), 400
+        return jsonify(service.ingest_document(doc_id=doc_id, source=source, content=content))
+
+    @app.post("/api/rag")
+    def rag_answer():
+        payload = request.get_json(force=True)
+        question = str(payload.get("question", "")).strip()
+        if not question:
+            return jsonify({"error": "question 不能为空"}), 400
+        top_k = payload.get("top_k")
+        try:
+            top_k_value = int(top_k) if top_k is not None else None
+        except (TypeError, ValueError):
+            return jsonify({"error": "top_k 必须是整数"}), 400
+        return jsonify(service.rag_answer(question=question, top_k=top_k_value))
+
+    @app.get("/api/metrics")
+    def metrics():
+        return jsonify(service.get_metrics())
 
     return app

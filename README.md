@@ -18,7 +18,7 @@ myagent/
 ├─ workspace/                   # 可进化资产（MEMORY + skills）
 └─ src/agent/
    ├─ config.py                 # 配置层
-   ├─ core/                     # 领域核心层（loop + memory + skill + session）
+  ├─ core/                     # 领域核心层（loop + memory + skill + session + rag skeleton）
    ├─ llm/                      # 模型提供商层
    ├─ tools/                    # 工具注册层
    ├─ application/              # 应用服务层（编排）
@@ -61,6 +61,23 @@ python main.py
 - Provider / Model 切换并立即生效；
 - 在线编辑 `MEMORY.md`；
 - 在线读取与保存 `skills/*.md`。
+- RAG 文档摄入（手工输入文本 -> 入库）。
+
+## 企业级骨架（已预置，待你逐模块加强）
+
+- `core/ingestion.py`：清洗、切块、去重、元数据。
+- `core/retrieval.py`：混合检索占位实现（词法 + 简化语义分数）。
+- `core/rerank.py`：重排占位实现（可替换为真实 reranker）。
+- `core/generation.py`：基于证据生成与拒答骨架。
+- `core/evaluation.py`：在线评估记录与聚合指标。
+- `core/observability.py`：trace 事件记录。
+- `application/rag_agent_service.py`：RAG 编排层。
+
+### 新增 API（框架级）
+
+- `POST /api/ingest`：写入文档到检索库。
+- `POST /api/rag`：走 RAG 链路回答问题。
+- `GET /api/metrics`：查看在线评估聚合指标。
 
 ## 可进化机制
 
@@ -80,4 +97,9 @@ python main.py
 - `WEB_PORT=7860`
 - `DATA_DIR=./runtime`
 - `WORKSPACE_DIR=./workspace`
+- `RAG_ENABLED=true|false`
+- `CHUNK_SIZE=500`
+- `CHUNK_OVERLAP=80`
+- `RETRIEVAL_TOP_K=6`
+- `RERANK_TOP_K=3`
 

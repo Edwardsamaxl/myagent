@@ -22,6 +22,13 @@ class AgentConfig:
     skills_dir: Path
     memory_file: Path
     sessions_file: Path
+    chunk_size: int
+    chunk_overlap: int
+    retrieval_top_k: int
+    rerank_top_k: int
+    rag_enabled: bool
+    trace_file: Path
+    eval_records_file: Path
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -30,6 +37,8 @@ class AgentConfig:
         skills_dir = workspace_dir / "skills"
         memory_file = workspace_dir / "MEMORY.md"
         sessions_file = data_dir / "sessions.json"
+        trace_file = data_dir / "traces.jsonl"
+        eval_records_file = data_dir / "eval_records.jsonl"
         return cls(
             model_provider=os.getenv("MODEL_PROVIDER", "ollama").strip(),
             model_name=os.getenv("MODEL_NAME", "qwen2.5:7b").strip(),
@@ -46,5 +55,12 @@ class AgentConfig:
             skills_dir=skills_dir,
             memory_file=memory_file,
             sessions_file=sessions_file,
+            chunk_size=int(os.getenv("CHUNK_SIZE", "500")),
+            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "80")),
+            retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "6")),
+            rerank_top_k=int(os.getenv("RERANK_TOP_K", "3")),
+            rag_enabled=os.getenv("RAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"},
+            trace_file=trace_file,
+            eval_records_file=eval_records_file,
         )
 

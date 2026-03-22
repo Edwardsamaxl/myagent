@@ -4,5 +4,6 @@ __pycache__/
 .env
 runtime/
 workspace/
+data/debug/
 _run.bat
 _test*.bat
