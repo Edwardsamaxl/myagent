@@ -26,6 +26,14 @@ class AgentConfig:
     chunk_overlap: int
     retrieval_top_k: int
     rerank_top_k: int
+    retrieval_fusion_mode: str
+    retrieval_lexical_weight: float
+    retrieval_tfidf_weight: float
+    retrieval_embedding_weight: float
+    embedding_enabled: bool
+    embedding_provider: str
+    embedding_model: str
+    embedding_top_k: int
     rag_enabled: bool
     trace_file: Path
     eval_records_file: Path
@@ -59,6 +67,15 @@ class AgentConfig:
             chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "80")),
             retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "6")),
             rerank_top_k=int(os.getenv("RERANK_TOP_K", "3")),
+            retrieval_fusion_mode=os.getenv("RETRIEVAL_FUSION_MODE", "weighted_sum").strip().lower(),
+            retrieval_lexical_weight=float(os.getenv("RETRIEVAL_LEXICAL_WEIGHT", "0.35")),
+            retrieval_tfidf_weight=float(os.getenv("RETRIEVAL_TFIDF_WEIGHT", "0.25")),
+            retrieval_embedding_weight=float(os.getenv("RETRIEVAL_EMBEDDING_WEIGHT", "0.40")),
+            embedding_enabled=os.getenv("EMBEDDING_ENABLED", "true").strip().lower()
+            in {"1", "true", "yes", "on"},
+            embedding_provider=os.getenv("EMBEDDING_PROVIDER", "").strip().lower(),
+            embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text").strip(),
+            embedding_top_k=int(os.getenv("EMBEDDING_TOP_K", "12")),
             rag_enabled=os.getenv("RAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"},
             trace_file=trace_file,
             eval_records_file=eval_records_file,

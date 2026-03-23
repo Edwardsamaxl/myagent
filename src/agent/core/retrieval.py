@@ -8,7 +8,24 @@ from .schemas import DocumentChunk, RetrievalHit
 
 
 def _tokenize(text: str) -> list[str]:
-    return [t for t in re.findall(r"[a-zA-Z0-9\u4e00-\u9fff]+", text.lower()) if t]
+    raw_tokens = [t for t in re.findall(r"[a-zA-Z0-9\u4e00-\u9fff]+", text.lower()) if t]
+    out: list[str] = []
+    seen: set[str] = set()
+    for token in raw_tokens:
+        # 仅保留英文/数字原 token；中文连续串改用 n-gram，避免超长中文 token 带来噪声
+        if re.fullmatch(r"[a-z0-9]+", token) and token not in seen:
+            out.append(token)
+            seen.add(token)
+        zh_runs = re.findall(r"[\u4e00-\u9fff]+", token)
+        for zh in zh_runs:
+            # 中文仅加入 bi-gram / tri-gram，不保留原始长串 token
+            for n in (2, 3):
+                for i in range(0, len(zh) - n + 1):
+                    gram = zh[i : i + n]
+                    if gram and gram not in seen:
+                        out.append(gram)
+                        seen.add(gram)
+    return out
 
 
 class InMemoryHybridRetriever:
@@ -18,12 +35,30 @@ class InMemoryHybridRetriever:
     - semantic score: simplified tf-idf cosine
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        embedding_provider: object | None = None,
+        fusion_mode: str = "weighted_sum",
+        lexical_weight: float = 0.35,
+        tfidf_weight: float = 0.25,
+        embedding_weight: float = 0.40,
+        embedding_top_k: int = 12,
+    ) -> None:
         self._chunks: dict[str, DocumentChunk] = {}
         self._doc_freq: defaultdict[str, int] = defaultdict(int)
         self._chunk_terms: dict[str, dict[str, int]] = {}
+        self._chunk_embeddings: dict[str, list[float]] = {}
+        self._embedding_provider = embedding_provider
+        self._fusion_mode = fusion_mode if fusion_mode in {"weighted_sum", "rrf"} else "weighted_sum"
+        self._lexical_weight = lexical_weight
+        self._tfidf_weight = tfidf_weight
+        self._embedding_weight = embedding_weight
+        self._embedding_top_k = max(1, embedding_top_k)
 
     def upsert_chunks(self, chunks: list[DocumentChunk]) -> None:
+        embedding_inputs: list[str] = []
+        embedding_ids: list[str] = []
         for chunk in chunks:
             self._chunks[chunk.chunk_id] = chunk
             terms = _tokenize(chunk.text)
@@ -31,28 +66,111 @@ class InMemoryHybridRetriever:
             for term in terms:
                 tf[term] += 1
             self._chunk_terms[chunk.chunk_id] = dict(tf)
+            if self._embedding_provider:
+                embedding_ids.append(chunk.chunk_id)
+                embedding_inputs.append(chunk.text)
+        if self._embedding_provider and embedding_inputs:
+            try:
+                vectors = self._embedding_provider.embed_texts(embedding_inputs)
+                for idx, chunk_id in enumerate(embedding_ids):
+                    if idx < len(vectors):
+                        self._chunk_embeddings[chunk_id] = vectors[idx]
+            except Exception:
+                # embedding 通道异常时降级到 lexical/tfidf，避免阻塞主链路
+                self._chunk_embeddings = {}
         self._rebuild_df()
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievalHit]:
+        hits, _ = self.search_with_debug(query=query, top_k=top_k)
+        return hits
+
+    def search_with_debug(self, query: str, top_k: int = 5) -> tuple[list[RetrievalHit], dict[str, object]]:
         if not query.strip() or not self._chunks:
-            return []
+            return [], {
+                "query_tokens": [],
+                "total_chunks": len(self._chunks),
+                "positive_score_count": 0,
+                "top_scores": [],
+                "zero_score_reasons": {
+                    "both_zero": 0,
+                    "lexical_zero_only": 0,
+                    "semantic_zero_only": 0,
+                },
+            }
         top_k = max(1, top_k)
         q_terms = _tokenize(query)
         q_tf: dict[str, int] = defaultdict(int)
         for t in q_terms:
             q_tf[t] += 1
+        q_embedding = self._embed_query(query)
 
-        scores: list[tuple[str, float]] = []
+        weighted_scores: list[tuple[str, float]] = []
+        rrf_scores: defaultdict[str, float] = defaultdict(float)
+        per_chunk_scores: dict[str, dict[str, float]] = {}
+        zero_score_reasons = {
+            "both_zero": 0,
+            "lexical_zero_only": 0,
+            "semantic_zero_only": 0,
+            "embedding_zero_only": 0,
+        }
+        lexical_rank: list[tuple[str, float]] = []
+        tfidf_rank: list[tuple[str, float]] = []
+        embedding_rank: list[tuple[str, float]] = []
         for chunk_id, chunk in self._chunks.items():
             lexical = self._lexical_score(q_terms, chunk.text)
-            semantic = self._cosine_tfidf(q_tf, self._chunk_terms.get(chunk_id, {}))
-            score = 0.45 * lexical + 0.55 * semantic
+            tfidf = self._cosine_tfidf(q_tf, self._chunk_terms.get(chunk_id, {}))
+            embedding = self._embedding_score(q_embedding, self._chunk_embeddings.get(chunk_id))
+            per_chunk_scores[chunk_id] = {
+                "lexical": lexical,
+                "tfidf": tfidf,
+                "embedding": embedding,
+            }
+            if lexical > 0:
+                lexical_rank.append((chunk_id, lexical))
+            if tfidf > 0:
+                tfidf_rank.append((chunk_id, tfidf))
+            if embedding > 0:
+                embedding_rank.append((chunk_id, embedding))
+
+            score = (
+                self._lexical_weight * lexical
+                + self._tfidf_weight * tfidf
+                + self._embedding_weight * embedding
+            )
             if score > 0:
-                scores.append((chunk_id, score))
-        scores.sort(key=lambda item: item[1], reverse=True)
+                weighted_scores.append((chunk_id, score))
+            if lexical == 0 and tfidf == 0 and embedding == 0:
+                zero_score_reasons["both_zero"] += 1
+            elif lexical == 0:
+                if tfidf > 0 and embedding > 0:
+                    zero_score_reasons["lexical_zero_only"] += 1
+                elif tfidf == 0 and embedding > 0:
+                    zero_score_reasons["semantic_zero_only"] += 1
+            elif tfidf == 0 and embedding == 0:
+                zero_score_reasons["semantic_zero_only"] += 1
+            elif embedding == 0 and (lexical > 0 or tfidf > 0):
+                zero_score_reasons["embedding_zero_only"] += 1
+
+        lexical_rank.sort(key=lambda item: item[1], reverse=True)
+        tfidf_rank.sort(key=lambda item: item[1], reverse=True)
+        embedding_rank.sort(key=lambda item: item[1], reverse=True)
+        weighted_scores.sort(key=lambda item: item[1], reverse=True)
+
+        if self._fusion_mode == "rrf":
+            self._apply_rrf(rrf_scores, lexical_rank, self._lexical_weight)
+            self._apply_rrf(rrf_scores, tfidf_rank, self._tfidf_weight)
+            self._apply_rrf(
+                rrf_scores,
+                embedding_rank[: self._embedding_top_k],
+                self._embedding_weight,
+            )
+            final_scores = sorted(rrf_scores.items(), key=lambda item: item[1], reverse=True)
+        else:
+            final_scores = weighted_scores
 
         hits: list[RetrievalHit] = []
-        for chunk_id, score in scores[:top_k]:
+        score_breakdown: list[dict[str, object]] = []
+        for chunk_id, score in final_scores[:top_k]:
             chunk = self._chunks[chunk_id]
             hits.append(
                 RetrievalHit(
@@ -63,7 +181,72 @@ class InMemoryHybridRetriever:
                     metadata=chunk.metadata,
                 )
             )
-        return hits
+            channels = per_chunk_scores.get(chunk_id, {})
+            sources = [
+                key
+                for key, val in channels.items()
+                if isinstance(val, float) and val > 0
+            ]
+            score_breakdown.append(
+                {
+                    "chunk_id": chunk_id,
+                    "fused": round(score, 6),
+                    "lexical": round(channels.get("lexical", 0.0), 6),
+                    "tfidf": round(channels.get("tfidf", 0.0), 6),
+                    "embedding": round(channels.get("embedding", 0.0), 6),
+                    "sources": sources,
+                }
+            )
+        debug: dict[str, object] = {
+            "query_tokens": q_terms,
+            "total_chunks": len(self._chunks),
+            "fusion_mode": self._fusion_mode,
+            "positive_score_count": len(final_scores),
+            "top_scores": [round(score, 6) for _, score in final_scores[:top_k]],
+            "zero_score_reasons": zero_score_reasons,
+            "score_breakdown": score_breakdown,
+        }
+        return hits, debug
+
+    def _embed_query(self, query: str) -> list[float] | None:
+        if not self._embedding_provider:
+            return None
+        try:
+            vectors = self._embedding_provider.embed_texts([query])
+        except Exception:
+            return None
+        if not vectors:
+            return None
+        return vectors[0]
+
+    def _embedding_score(self, q_vec: list[float] | None, d_vec: list[float] | None) -> float:
+        if not q_vec or not d_vec:
+            return 0.0
+        return max(0.0, self._cosine_dense(q_vec, d_vec))
+
+    @staticmethod
+    def _cosine_dense(a: list[float], b: list[float]) -> float:
+        if not a or not b or len(a) != len(b):
+            return 0.0
+        numerator = sum(x * y for x, y in zip(a, b))
+        a_norm = math.sqrt(sum(x * x for x in a))
+        b_norm = math.sqrt(sum(y * y for y in b))
+        if a_norm == 0 or b_norm == 0:
+            return 0.0
+        return numerator / (a_norm * b_norm)
+
+    @staticmethod
+    def _apply_rrf(
+        out_scores: defaultdict[str, float],
+        rank_list: list[tuple[str, float]],
+        weight: float,
+        *,
+        k: int = 60,
+    ) -> None:
+        if weight <= 0:
+            return
+        for rank, (chunk_id, _) in enumerate(rank_list, start=1):
+            out_scores[chunk_id] += weight * (1.0 / (k + rank))
 
     def _rebuild_df(self) -> None:
         self._doc_freq.clear()

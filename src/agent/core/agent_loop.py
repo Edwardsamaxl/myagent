@@ -1,5 +1,16 @@
 from __future__ import annotations
 
+"""多步工具循环（SimpleAgent）。
+
+职责边界（与 RAG 解耦）：
+- 本模块只处理「工具 JSON ↔ 执行 ↔ 结果写回消息」；不负责检索、重排或证据拼接。
+- 当上层在 user 消息中注入「[检索证据]」块时，你应把它当作只读上下文回答用户，
+  不要用工具去「替代检索」或重复拉取同一批证据；工具用于时间/计算/记忆/技能/workspace 文件等。
+- 纯 RAG 直答请走 RagAgentService.answer / HTTP 专用接口；本循环用于需要工具能力的对话。
+
+若检索返回结构或证据块格式变化，由 application 层与 evidence_format 对齐后再改注入模板，勿在本文件硬编码字段名。
+"""
+
 import json
 from dataclasses import dataclass
 
@@ -8,6 +19,7 @@ from ..llm.providers import Message, ModelProvider
 from ..tools.registry import Tool
 
 
+# 工具描述与记忆/技能块；RAG 证据不在此定义，由 AgentService.chat 拼进 user 消息。
 SYSTEM_PROMPT = """你是一个可调用工具的助手。
 你有以下工具可用（name: description）：
 {tool_desc}

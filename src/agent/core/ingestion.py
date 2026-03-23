@@ -9,18 +9,67 @@
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 from .schemas import DocumentChunk
+
+
+def derive_doc_metadata_from_source(source: str) -> dict[str, str]:
+    """从 ``source`` 推导文档级元数据（与 ``data/raw/finance/<公司>/<文件>`` 及 ``公司/文件名`` 约定一致）。
+
+    无法解析的键省略；``source`` 始终写入以便追溯。
+    """
+    if not source or not source.strip():
+        return {"source": source}
+    s = source.replace("\\", "/").strip()
+    parts = [p for p in s.split("/") if p]
+    company = ""
+    filename = ""
+    if "finance" in parts:
+        idx = parts.index("finance")
+        if idx + 1 < len(parts):
+            company = parts[idx + 1]
+        if idx + 2 < len(parts):
+            filename = parts[idx + 2]
+    elif len(parts) >= 2:
+        company = parts[0]
+        filename = parts[-1]
+    elif len(parts) == 1:
+        filename = parts[0]
+
+    meta: dict[str, str] = {"source": source}
+    if company:
+        meta["company"] = company
+    if filename:
+        stem = Path(filename).stem
+        suf = Path(filename).suffix.lower()
+        m = re.search(r"_(\d{4})\b", filename) or re.search(r"(\d{4})年", filename)
+        if m:
+            meta["date"] = m.group(1)
+        # 「年度报告」不含连续子串「年报」，需单独匹配；半年度报告优先于年度。
+        if "半年度报告" in stem or "半年报" in stem or "半年度" in stem:
+            meta["doc_type"] = "半年报"
+        elif "年度报告" in stem or ("年报" in stem and "半年" not in stem):
+            meta["doc_type"] = "年报"
+        elif suf == ".md":
+            meta["doc_type"] = "markdown"
+        elif suf == ".txt":
+            meta["doc_type"] = "text"
+        elif suf:
+            meta["doc_type"] = suf.lstrip(".")
+    return meta
 
 
 @dataclass
 class IngestionResult:
     doc_id: str
     source: str
-    total_chunks: int
-    deduplicated_chunks: int  # 与 total_chunks 相同（不再做内容去重）
+    total_chunks: int  # 原始分块数（去重前）
+    deduplicated_chunks: int  # 去重后实际写入数
+    dropped_duplicates: int  # 去重丢弃数
 
 
 class DocumentIngestionPipeline:
@@ -40,23 +89,62 @@ class DocumentIngestionPipeline:
         self.chunk_overlap = chunk_overlap
         # 单块最大长度：避免一句极长时无限延伸（例如无标点长段落）
         self._max_chunk_len = chunk_size * 2
+        # 进程内已写入 chunk 的内容哈希（用于可选跨文档去重）
+        self._global_chunk_hashes: set[str] = set()
 
     def ingest_text(
         self,
         doc_id: str,
         source: str,
         content: str,
+        doc_metadata: dict[str, str] | None = None,
+        *,
+        dedup_across_docs: bool = False,
     ) -> tuple[list[DocumentChunk], IngestionResult]:
         cleaned = self._clean_text(content)
         raw_chunks = self._split_text(cleaned)
-        chunks = self._to_document_chunks(doc_id=doc_id, source=source, texts=raw_chunks)
+        deduped_texts, dropped_duplicates = self._deduplicate_chunks(
+            raw_chunks, dedup_across_docs=dedup_across_docs
+        )
+        merged_meta = derive_doc_metadata_from_source(source)
+        if doc_metadata:
+            for k, v in doc_metadata.items():
+                merged_meta[str(k)] = str(v)
+        chunks = self._to_document_chunks(
+            doc_id=doc_id, source=source, texts=deduped_texts, chunk_metadata=merged_meta
+        )
         result = IngestionResult(
             doc_id=doc_id,
             source=source,
-            total_chunks=len(chunks),
+            total_chunks=len(raw_chunks),
             deduplicated_chunks=len(chunks),
+            dropped_duplicates=dropped_duplicates,
         )
         return chunks, result
+
+    @staticmethod
+    def _normalize_for_hash(text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
+
+    def _deduplicate_chunks(
+        self, texts: list[str], *, dedup_across_docs: bool
+    ) -> tuple[list[str], int]:
+        local_hashes: set[str] = set()
+        kept: list[str] = []
+        dropped = 0
+        for text in texts:
+            normalized = self._normalize_for_hash(text)
+            digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+            if digest in local_hashes:
+                dropped += 1
+                continue
+            if dedup_across_docs and digest in self._global_chunk_hashes:
+                dropped += 1
+                continue
+            local_hashes.add(digest)
+            self._global_chunk_hashes.add(digest)
+            kept.append(text)
+        return kept, dropped
 
     @staticmethod
     def _clean_text(text: str) -> str:
@@ -201,7 +289,13 @@ class DocumentIngestionPipeline:
 
         return raw_end
 
-    def _to_document_chunks(self, doc_id: str, source: str, texts: list[str]) -> list[DocumentChunk]:
+    def _to_document_chunks(
+        self,
+        doc_id: str,
+        source: str,
+        texts: list[str],
+        chunk_metadata: dict[str, str],
+    ) -> list[DocumentChunk]:
         """顺序编号为 DocumentChunk（不做内容去重：正常分块几乎不会重复，去重会掩盖异常）。"""
         out: list[DocumentChunk] = []
         for idx, chunk_text in enumerate(texts):
@@ -212,7 +306,7 @@ class DocumentIngestionPipeline:
                     doc_id=doc_id,
                     text=chunk_text,
                     source=source,
-                    metadata={},
+                    metadata=dict(chunk_metadata),
                 )
             )
         return out

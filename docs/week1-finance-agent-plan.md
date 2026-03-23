@@ -3,6 +3,8 @@
 本文档目标：把你当前项目拆成“每天可完成、可验证、可讲述”的小步任务。  
 原则：每天都有**代码产出 + 指标记录 + 3分钟口述复盘**。
 
+多 Agent 并行时，接口与事实源见 [coordination.md](coordination.md)。
+
 ---
 
 ## 0. 你当前已经有的东西（现状盘点）
@@ -55,9 +57,9 @@
 - 写 30 条问答样例（问题 + 参考答案 + 证据来源）。
 
 ### 当日产出
-- `docs/day1-requirements.md`
+- `docs/day1-summary.md`（需求冻结与落地总结；若单独维护需求说明可另增文档，但本仓库以 `day1-summary.md` 为准）
 - `data/raw/finance/*`
-- `data/eval/week1_eval_set.jsonl`（建议格式：`question/expected_answer/source`）
+- `data/eval/week1_eval_set.jsonl`（建议格式：`question/expected_answer/source`；当前仓库样例条数以实际文件为准）
 
 ### 验收标准
 - 你能用 3 分钟解释：这个 Agent 解决什么，不解决什么。
@@ -65,6 +67,8 @@
 ---
 
 ## Day 2：Ingestion 模块改造（清洗/切块/元数据）
+
+> 状态（2026-03-23）：已收口，验收与遗留见 `docs/day2-daily-plan.md` 与 `docs/day2-ingestion-notes.md`。
 
 ### 目标
 - 让文档进入系统时结构稳定，便于后续检索。
@@ -86,6 +90,8 @@
 ---
 
 ## Day 3：Retrieval 从占位走向可解释
+
+> 开工单：`docs/day3-daily-plan.md`（第一优先级：字段契约稳定 + 可解释输出；当日引入 embedding 语义通道并形成双通道混合召回）。
 
 ### 目标
 - 把“检索命中”变得可看、可调、可对比。

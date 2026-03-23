@@ -48,7 +48,8 @@
 | `scripts/run_ingest.py` | 批量入库（支持 .md） |
 | `src/agent/core/ingestion.py` | 结构感知 + 定长+句末 + 灵活重叠 |
 | `data/README.md` | 数据目录与流程说明 |
-| `docs/day1-ingestion-explained.md` | Ingestion 模块说明 |
+| `src/agent/core/ingestion.py` | Ingestion 实现与模块内注释 |
+| `docs/day2-daily-plan.md` | Day 2 起元数据与入库契约（协调见 `docs/coordination.md`） |
 
 ## 7. 验收
 

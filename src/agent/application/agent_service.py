@@ -6,6 +6,7 @@ from typing import Any
 from .rag_agent_service import RagAgentService
 from ..config import AgentConfig
 from ..core.agent_loop import SimpleAgent
+from ..core.evidence_format import format_evidence_block_from_api_dicts
 from ..core.memory_store import MemoryStore
 from ..core.session_store import SessionStore
 from ..core.skill_store import SkillStore
@@ -14,6 +15,8 @@ from ..tools.registry import default_tools
 
 
 class AgentService:
+    """组合 RAG 与 SimpleAgent：检索证据由本类注入 user 消息，工具循环不重复实现检索。"""
+
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
         self._ensure_dirs()
@@ -36,13 +39,14 @@ class AgentService:
         return f"[MEMORY.md]\n{memory}\n\n[SKILLS]\n{skills}"
 
     def chat(self, session_id: str, user_message: str) -> dict[str, Any]:
+        # RAG：先 answer() 得到结构化 hits；证据块格式与 generation 侧一致（见 evidence_format）。
         rag_result: dict[str, Any] | None = None
         if self.config.rag_enabled:
             rag_result = self.rag.answer(user_message)
         history = self.session_store.get_history(session_id)
         user_input = user_message
         if rag_result and rag_result.get("retrieval_hits"):
-            context_block = self._build_retrieval_context(rag_result["retrieval_hits"])
+            context_block = format_evidence_block_from_api_dicts(rag_result["retrieval_hits"])
             user_input = f"{user_message}\n\n[检索证据]\n{context_block}"
         result = self.agent.run(
             user_input=user_input,
@@ -111,21 +115,29 @@ class AgentService:
     def save_skill(self, name: str, content: str) -> str:
         return self.skill_store.upsert_skill(name, content)
 
-    def ingest_document(self, doc_id: str, source: str, content: str) -> dict[str, Any]:
-        return self.rag.ingest_document(doc_id=doc_id, source=source, content=content)
+    def ingest_document(
+        self,
+        doc_id: str,
+        source: str,
+        content: str,
+        doc_metadata: dict[str, str] | None = None,
+        chunk_size: int | None = None,
+        chunk_overlap: int | None = None,
+        dedup_across_docs: bool = False,
+    ) -> dict[str, Any]:
+        return self.rag.ingest_document(
+            doc_id=doc_id,
+            source=source,
+            content=content,
+            doc_metadata=doc_metadata,
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            dedup_across_docs=dedup_across_docs,
+        )
 
     def rag_answer(self, question: str, top_k: int | None = None) -> dict[str, Any]:
         return self.rag.answer(question=question, top_k=top_k)
 
-    def get_metrics(self) -> dict[str, float | int]:
+    def get_metrics(self) -> dict[str, float | int | None]:
         return self.rag.get_metrics()
 
-    @staticmethod
-    def _build_retrieval_context(hits: list[dict[str, Any]]) -> str:
-        lines = []
-        for idx, hit in enumerate(hits, start=1):
-            lines.append(
-                f"[{idx}] source={hit.get('source', '')} score={hit.get('score', 0)}\n"
-                f"{hit.get('text_preview', '')}"
-            )
-        return "\n\n".join(lines)

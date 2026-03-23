@@ -64,7 +64,9 @@ def main() -> None:
         ]
         for c in chunks:
             lines.append("=" * 72)
-            lines.append(f"[{c.chunk_id}] len={len(c.text)} source={c.source}")
+            lines.append(
+                f"[{c.chunk_id}] len={len(c.text)} source={c.source} metadata={c.metadata!r}"
+            )
             lines.append("-" * 72)
             lines.append(c.text)
             lines.append("")
@@ -78,7 +80,12 @@ def main() -> None:
             for c in chunks:
                 f.write(
                     json.dumps(
-                        {"chunk_id": c.chunk_id, "len": len(c.text), "text": c.text},
+                        {
+                            "chunk_id": c.chunk_id,
+                            "len": len(c.text),
+                            "metadata": c.metadata,
+                            "text": c.text,
+                        },
                         ensure_ascii=False,
                     )
                     + "\n"

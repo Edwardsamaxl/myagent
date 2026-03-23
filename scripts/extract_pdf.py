@@ -71,11 +71,11 @@ def main() -> None:
 
     pdfs = [
         (
-            Path(r"C:\Users\Ed\Downloads\贵州茅台：贵州茅台2024年年度报告.pdf"),
+            Path(r"E:\CursorProject\myagent\data\raw\finance\贵州茅台\贵州茅台：贵州茅台2024年年度报告.pdf"),
             "年报_2024.txt",
         ),
         (
-            Path(r"C:\Users\Ed\Downloads\贵州茅台：贵州茅台2025年半年度报告.pdf"),
+            Path(r"E:\CursorProject\myagent\data\raw\finance\贵州茅台\贵州茅台：贵州茅台2025年半年度报告.pdf"),
             "半年报_2025.txt",
         ),
     ]

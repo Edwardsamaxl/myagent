@@ -1,10 +1,26 @@
 from __future__ import annotations
 
+"""Trace 为 JSONL：每行一个 JSON 对象。
+
+字段：`trace_id`（12 位 hex，与同日 `eval_records.jsonl` 中同次问答一致）、
+`stage`（见 `TraceStage`）、`message`、`payload`（键值均为字符串）、`timestamp`（UTC ISO）。
+
+关联方式：对一次 RAG 问答，用 `trace_id` 在 `traces.jsonl` 与 `eval_records.jsonl` 中过滤同一请求。
+"""
+
 import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+
+class TraceStage:
+    """与 `RagAgentService` 写入的 `stage` 取值保持一致，便于检索与仪表盘分组。"""
+
+    INGESTION_START = "ingestion_start"
+    INGESTION_DONE = "ingestion_done"
+    RAG_ANSWER = "rag_answer"
 
 
 @dataclass

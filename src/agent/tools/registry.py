@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""工具注册：供 SimpleAgent 多步调用。不负责检索/证据；知识型回答由 RAG（GroundedGenerator）或上层注入的「[检索证据]」提供。"""
+
 import ast
 from dataclasses import dataclass
 from datetime import datetime

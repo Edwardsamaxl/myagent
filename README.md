@@ -25,7 +25,6 @@ myagent/
    ├─ interfaces/               # 接口层（Web API + UI）
    ├─ agent.py                  # 兼容导出（指向 core）
    ├─ providers.py              # 兼容导出（指向 llm）
-   ├─ tools.py                  # 兼容导出（指向 tools）
    ├─ service.py                # 兼容导出（指向 application）
    └─ web.py                    # 兼容导出（指向 interfaces）
 ```
