@@ -15,6 +15,7 @@ from .evidence_format import (
     normalize_structured_answer,
     pick_key_evidence_snippet,
     select_evidence_hits,
+    is_low_information_snippet,
 )
 from .schemas import GenerationResult, RetrievalHit
 
@@ -126,7 +127,7 @@ class GroundedGenerator:
         if not self.strict_policy:
             if not contains_citation_marker(structured):
                 return "拒答：证据不足，无法建立可引用的回答。", True, "insufficient_evidence"
-            return self._ensure_key_evidence_line(structured, hits), False, ""
+            return self._ensure_key_evidence_line(structured, question, hits), False, ""
 
         # 1) 引用合规校验
         if not contains_citation_marker(structured) or not citations_are_valid(structured, len(hits)):
@@ -142,15 +143,17 @@ class GroundedGenerator:
             )
         if coverage < self.cautious_coverage_threshold:
             cautious = self._cautious_template(question=question, hits=hits, citation_ids=citation_ids)
+            if cautious.startswith(("拒答：", "拒答:")):
+                return cautious, True, "insufficient_evidence"
             return cautious, False, ""
-        return self._ensure_key_evidence_line(structured, hits), False, ""
+        return self._ensure_key_evidence_line(structured, question, hits), False, ""
 
     @staticmethod
-    def _ensure_key_evidence_line(answer: str, hits: list[RetrievalHit]) -> str:
+    def _ensure_key_evidence_line(answer: str, question: str, hits: list[RetrievalHit]) -> str:
         """关键依据段至少含一条可定位事实片段。"""
         if GroundedGenerator._KEY_EVIDENCE_PREFIX not in answer:
             return answer
-        snippet = pick_key_evidence_snippet("", hits)
+        snippet = pick_key_evidence_snippet(question, hits)
         if not snippet:
             return answer
         lines = answer.splitlines()
@@ -174,6 +177,8 @@ class GroundedGenerator:
         cited = extract_citation_indices("".join(citation_ids))
         ref_text = "".join(f"[{i}]" for i in cited) if cited else "".join(citation_ids)
         snippet = pick_key_evidence_snippet(question, hits) or "证据片段信息有限。"
+        if is_low_information_snippet(snippet):
+            return "拒答：当前证据多为目录/标题信息，无法支撑有效回答。"
         return (
             "结论：基于现有证据可给出谨慎估计，建议结合后续披露数据复核。\n"
             f"关键依据：证据显示 {snippet}\n"

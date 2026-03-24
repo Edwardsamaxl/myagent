@@ -68,6 +68,13 @@ _STOPWORDS = {
     "数据",
     "其中",
 }
+_LOW_INFO_PHRASES = (
+    "年度报告全文",
+    "半年度报告全文",
+    "目录",
+    "释义",
+    "公司简介",
+)
 
 
 def citation_ids_for_hits(hits: list[RetrievalHit]) -> list[str]:
@@ -155,6 +162,18 @@ def pick_key_evidence_snippet(
     best = max(candidates, key=_score)
     clean = _PUNCT_RE.sub(" ", best).strip()
     return clean[:max_chars]
+
+
+def is_low_information_snippet(snippet: str) -> bool:
+    """判断片段是否仅为目录/标题类低信息文本。"""
+    text = snippet.strip()
+    if len(text) < 10:
+        return True
+    if ("年度报告" in text or "半年度报告" in text) and sum(ch.isdigit() for ch in text) < 2:
+        return True
+    if sum(ch.isdigit() for ch in text) == 0 and all(p in text for p in ("公司", "报告")):
+        return True
+    return any(p in text for p in _LOW_INFO_PHRASES)
 
 
 def evaluate_anchor_coverage(question: str, answer: str, hits: list[RetrievalHit]) -> tuple[float, dict[str, int]]:
