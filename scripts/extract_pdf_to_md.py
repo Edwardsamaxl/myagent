@@ -103,38 +103,40 @@ def _to_structured_md(text: str) -> str:
 
 
 def main() -> None:
-    data_dir = ROOT / "data" / "raw" / "finance" / "贵州茅台"
-    data_dir.mkdir(parents=True, exist_ok=True)
+    finance_dir = ROOT / "data" / "raw" / "finance"
+    if not finance_dir.exists():
+        print(f"目录不存在: {finance_dir}")
+        sys.exit(1)
 
-    # 优先用项目内 PDF，否则用 Downloads
-    base_paths = [
-        data_dir,
-        Path(r"E:\CursorProject\myagent\data\raw\finance"),
-    ]
-    pdfs = [
-        ("贵州茅台：贵州茅台2024年年度报告.pdf", "年报_2024.md"),
-        ("贵州茅台：贵州茅台2025年半年度报告.pdf", "半年报_2025.md"),
-    ]
+    pdf_paths = sorted(finance_dir.rglob("*.pdf"))
+    if not pdf_paths:
+        print(f"未找到 PDF: {finance_dir}")
+        sys.exit(0)
 
-    for pdf_name, out_name in pdfs:
-        pdf_path = None
-        for base in base_paths:
-            candidate = base / pdf_name
-            if candidate.exists():
-                pdf_path = candidate
-                break
-        if not pdf_path:
-            print(f"跳过（未找到）: {pdf_name}")
-            continue
-        print(f"提取: {pdf_path.name}")
+    print(f"找到 {len(pdf_paths)} 个 PDF，开始转换 Markdown...")
+    converted = 0
+    failed = 0
+    for pdf_path in pdf_paths:
+        print(f"提取: {pdf_path}")
         try:
             md_content = extract_pdf_to_md(pdf_path)
         except ImportError:
             print("  需要: pip install pdfplumber")
             sys.exit(1)
-        out_path = data_dir / out_name
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            print(f"  失败: {exc}")
+            continue
+        out_path = pdf_path.with_suffix(".md")
         out_path.write_text(md_content, encoding="utf-8")
+        converted += 1
         print(f"  已保存: {out_path} ({len(md_content)} 字符)")
+
+    print("")
+    print("=== 转换汇总（PDF -> MD）===")
+    print(f"  扫描 PDF 数: {len(pdf_paths)}")
+    print(f"  成功: {converted}")
+    print(f"  失败: {failed}")
 
 
 if __name__ == "__main__":

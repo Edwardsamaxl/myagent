@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import re
 from collections import defaultdict
 
@@ -16,6 +17,11 @@ def _tokenize(text: str) -> list[str]:
         if re.fullmatch(r"[a-z0-9]+", token) and token not in seen:
             out.append(token)
             seen.add(token)
+        # 混合串中补数字子 token（如 2024、600519），增强时间/代码约束
+        for num in re.findall(r"\d+", token):
+            if num and num not in seen:
+                out.append(num)
+                seen.add(num)
         zh_runs = re.findall(r"[\u4e00-\u9fff]+", token)
         for zh in zh_runs:
             # 中文仅加入 bi-gram / tri-gram，不保留原始长串 token
@@ -45,9 +51,13 @@ class InMemoryHybridRetriever:
         embedding_weight: float = 0.40,
         embedding_top_k: int = 12,
     ) -> None:
+        sparse_mode = os.getenv("SPARSE_MODE", "tfidf").strip().lower()
+        if sparse_mode not in {"tfidf", "bm25", "tfidf_bm25"}:
+            sparse_mode = "tfidf"
         self._chunks: dict[str, DocumentChunk] = {}
         self._doc_freq: defaultdict[str, int] = defaultdict(int)
         self._chunk_terms: dict[str, dict[str, int]] = {}
+        self._chunk_lengths: dict[str, int] = {}
         self._chunk_embeddings: dict[str, list[float]] = {}
         self._embedding_provider = embedding_provider
         self._fusion_mode = fusion_mode if fusion_mode in {"weighted_sum", "rrf"} else "weighted_sum"
@@ -55,6 +65,10 @@ class InMemoryHybridRetriever:
         self._tfidf_weight = tfidf_weight
         self._embedding_weight = embedding_weight
         self._embedding_top_k = max(1, embedding_top_k)
+        self._sparse_mode = sparse_mode
+        self._bm25_k1 = float(os.getenv("BM25_K1", "1.5"))
+        self._bm25_b = float(os.getenv("BM25_B", "0.75"))
+        self._tfidf_bm25_alpha = float(os.getenv("TFIDF_BM25_ALPHA", "0.5"))
 
     def upsert_chunks(self, chunks: list[DocumentChunk]) -> None:
         embedding_inputs: list[str] = []
@@ -66,6 +80,7 @@ class InMemoryHybridRetriever:
             for term in terms:
                 tf[term] += 1
             self._chunk_terms[chunk.chunk_id] = dict(tf)
+            self._chunk_lengths[chunk.chunk_id] = len(terms)
             if self._embedding_provider:
                 embedding_ids.append(chunk.chunk_id)
                 embedding_inputs.append(chunk.text)
@@ -119,22 +134,26 @@ class InMemoryHybridRetriever:
         for chunk_id, chunk in self._chunks.items():
             lexical = self._lexical_score(q_terms, chunk.text)
             tfidf = self._cosine_tfidf(q_tf, self._chunk_terms.get(chunk_id, {}))
+            bm25 = self._bm25_score(q_tf, self._chunk_terms.get(chunk_id, {}), chunk_id)
+            sparse = self._sparse_score(tfidf, bm25)
             embedding = self._embedding_score(q_embedding, self._chunk_embeddings.get(chunk_id))
             per_chunk_scores[chunk_id] = {
                 "lexical": lexical,
                 "tfidf": tfidf,
+                "bm25": bm25,
+                "sparse": sparse,
                 "embedding": embedding,
             }
             if lexical > 0:
                 lexical_rank.append((chunk_id, lexical))
-            if tfidf > 0:
-                tfidf_rank.append((chunk_id, tfidf))
+            if sparse > 0:
+                tfidf_rank.append((chunk_id, sparse))
             if embedding > 0:
                 embedding_rank.append((chunk_id, embedding))
 
             score = (
                 self._lexical_weight * lexical
-                + self._tfidf_weight * tfidf
+                + self._tfidf_weight * sparse
                 + self._embedding_weight * embedding
             )
             if score > 0:
@@ -193,6 +212,8 @@ class InMemoryHybridRetriever:
                     "fused": round(score, 6),
                     "lexical": round(channels.get("lexical", 0.0), 6),
                     "tfidf": round(channels.get("tfidf", 0.0), 6),
+                    "bm25": round(channels.get("bm25", 0.0), 6),
+                    "sparse": round(channels.get("sparse", 0.0), 6),
                     "embedding": round(channels.get("embedding", 0.0), 6),
                     "sources": sources,
                 }
@@ -201,12 +222,45 @@ class InMemoryHybridRetriever:
             "query_tokens": q_terms,
             "total_chunks": len(self._chunks),
             "fusion_mode": self._fusion_mode,
+            "sparse_mode": self._sparse_mode,
             "positive_score_count": len(final_scores),
             "top_scores": [round(score, 6) for _, score in final_scores[:top_k]],
             "zero_score_reasons": zero_score_reasons,
             "score_breakdown": score_breakdown,
         }
         return hits, debug
+
+    def _sparse_score(self, tfidf: float, bm25: float) -> float:
+        if self._sparse_mode == "bm25":
+            return bm25
+        if self._sparse_mode == "tfidf_bm25":
+            a = min(1.0, max(0.0, self._tfidf_bm25_alpha))
+            return a * tfidf + (1.0 - a) * bm25
+        return tfidf
+
+    def _bm25_score(self, q_tf: dict[str, int], d_tf: dict[str, int], chunk_id: str) -> float:
+        if not q_tf or not d_tf:
+            return 0.0
+        n_docs = max(1, len(self._chunk_terms))
+        dl = max(1, self._chunk_lengths.get(chunk_id, sum(d_tf.values())))
+        avgdl = self._avg_doc_len()
+        k1 = max(0.01, self._bm25_k1)
+        b = min(1.0, max(0.0, self._bm25_b))
+        score = 0.0
+        for term in q_tf.keys():
+            tf = d_tf.get(term, 0)
+            if tf <= 0:
+                continue
+            df = self._doc_freq.get(term, 0)
+            idf = math.log((n_docs - df + 0.5) / (df + 0.5) + 1.0)
+            denom = tf + k1 * (1.0 - b + b * (dl / max(1e-9, avgdl)))
+            score += idf * ((tf * (k1 + 1.0)) / max(1e-9, denom))
+        return score
+
+    def _avg_doc_len(self) -> float:
+        if not self._chunk_lengths:
+            return 1.0
+        return sum(self._chunk_lengths.values()) / max(1, len(self._chunk_lengths))
 
     def _embed_query(self, query: str) -> list[float] | None:
         if not self._embedding_provider:

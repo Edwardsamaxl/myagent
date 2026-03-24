@@ -43,6 +43,21 @@ class AgentService:
         rag_result: dict[str, Any] | None = None
         if self.config.rag_enabled:
             rag_result = self.rag.answer(user_message)
+        # 关键边界：当 RAG 已给出可回答结果时，优先返回 RAG，避免 Agent 循环“改写证据结论”。
+        if rag_result and not bool(rag_result.get("refusal", False)):
+            history = self.session_store.get_history(session_id)
+            messages = history + [
+                {"role": "user", "content": user_message},
+                {"role": "assistant", "content": str(rag_result.get("answer", ""))},
+            ]
+            self.session_store.set_history(session_id, messages)
+            return {
+                "answer": str(rag_result.get("answer", "")),
+                "steps_used": 0,
+                "tool_calls": [],
+                "session_id": session_id,
+                "rag": rag_result,
+            }
         history = self.session_store.get_history(session_id)
         user_input = user_message
         if rag_result and rag_result.get("retrieval_hits"):

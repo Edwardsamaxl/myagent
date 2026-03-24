@@ -66,34 +66,41 @@ def clean_text(text: str) -> str:
 
 
 def main() -> None:
-    data_dir = ROOT / "data" / "raw" / "finance" / "贵州茅台"
-    data_dir.mkdir(parents=True, exist_ok=True)
+    finance_dir = ROOT / "data" / "raw" / "finance"
+    if not finance_dir.exists():
+        print(f"目录不存在: {finance_dir}")
+        sys.exit(1)
 
-    pdfs = [
-        (
-            Path(r"E:\CursorProject\myagent\data\raw\finance\贵州茅台\贵州茅台：贵州茅台2024年年度报告.pdf"),
-            "年报_2024.txt",
-        ),
-        (
-            Path(r"E:\CursorProject\myagent\data\raw\finance\贵州茅台\贵州茅台：贵州茅台2025年半年度报告.pdf"),
-            "半年报_2025.txt",
-        ),
-    ]
+    pdf_paths = sorted(finance_dir.rglob("*.pdf"))
+    if not pdf_paths:
+        print(f"未找到 PDF: {finance_dir}")
+        sys.exit(0)
 
-    for pdf_path, out_name in pdfs:
-        if not pdf_path.exists():
-            print(f"跳过（文件不存在）: {pdf_path}")
-            continue
-        print(f"提取: {pdf_path.name}")
+    print(f"找到 {len(pdf_paths)} 个 PDF，开始转换 TXT...")
+    converted = 0
+    failed = 0
+    for pdf_path in pdf_paths:
+        print(f"提取: {pdf_path}")
         try:
             raw = extract_pdf_with_tables(pdf_path)
         except ImportError:
             print("  需要安装 pdfplumber: pip install pdfplumber")
             sys.exit(1)
+        except Exception as exc:  # noqa: BLE001
+            failed += 1
+            print(f"  失败: {exc}")
+            continue
         cleaned = clean_text(raw)
-        out_path = data_dir / out_name
+        out_path = pdf_path.with_suffix(".txt")
         out_path.write_text(cleaned, encoding="utf-8")
+        converted += 1
         print(f"  已保存: {out_path} ({len(cleaned)} 字符)")
+
+    print("")
+    print("=== 转换汇总（PDF -> TXT）===")
+    print(f"  扫描 PDF 数: {len(pdf_paths)}")
+    print(f"  成功: {converted}")
+    print(f"  失败: {failed}")
 
 
 if __name__ == "__main__":

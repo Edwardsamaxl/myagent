@@ -154,6 +154,22 @@
   - Agent A：可提供临时 query rewrite 方案用于应急评测。
   - Agent B：作为根因责任方，优先优化检索切词与召回排序，减少“财务题召回到股东大会块”。
 
+### 3.14 生成模块契约（证据选取 + 回答生成）
+
+- **目标**：在检索/重排已有命中的前提下，保证回答“有证据、可引用、可拒答”。
+- **证据选取输入**：
+  - 来源：`retrieval_hits`（含 `chunk_id/score/source/metadata/text_preview`）。
+  - 允许使用 rerank 后顺序作为证据优先级；不改 `retrieval_hits` 主字段名。
+- **回答生成输出约束**：
+  - 回答结构至少包含：`结论`、`关键依据`、`引用编号`。
+  - 证据不足时必须拒答，且 reason code 与现有口径一致（`no_retrieval_hit` / `insufficient_evidence`）。
+  - 不允许“无引用硬答”。
+- **可扩展解释字段（可选）**：
+  - 如需新增 `selected_evidence_ids`、`citation_spans`、`generation_confidence` 等字段，必须先更新本节文档再实现。
+- **实现边界**：
+  - Agent C 主责 `src/agent/core/generation.py`、`src/agent/core/evidence_format.py` 及相关编排调用；
+  - 不在路由层实现证据筛选逻辑，不改 `/api/rag` 主字段契约。
+
 ---
 
 ## 4. 第 1 周任务依赖顺序（高层）
@@ -162,7 +178,7 @@
 需求与数据（Day 1）
     → Ingestion：元数据 + 入库可观测（Day 2）
         → Retrieval 可解释 / 混合分数（Day 3）
-            → Rerank + 生成约束（Day 4）
+            → Rerank + 证据选取 + 回答生成约束（Day3+ / 原 Day4）
                 → 评估闭环 + 指标（Day 5）
                     → 工具链与权限（Day 6）
                         → 周复盘与演示（Day 7）
@@ -181,6 +197,7 @@
 | `src/agent/application/rag_agent_service.py` | RAG 编排中枢 | 按阶段拆：`ingest_document` 与 `rag_answer` 分支分开提交；共享 `TraceLogger` 时避免重复改 `payload` 结构 |
 | `src/agent/core/ingestion.py` | 分块逻辑 | 先合「元数据/签名」再合「算法」；禁止并行改 `_split_fixed_then_sentence_end` 与重叠逻辑，除非一人只加测试/脚本 |
 | `scripts/run_ingest.py` | 批量入库 | 与 `web_app` 契约绑定；API 变更必须同步此脚本与 [coordination.md](coordination.md) 第 3 节 |
+| `src/agent/core/generation.py` + `src/agent/core/evidence_format.py` | 证据与回答格式耦合高 | C 先改生成模板，B 仅提供 rerank/证据顺序；若字段扩展，先更新 §3.14 再合并 |
 
 **边界拆分示例**：Agent A 只增加 `DocumentChunk.metadata` 填充与单元级行为；Agent B 只增加 `run_ingest.py` 汇总打印与错误码——二者通过 **§3.1 键名约定**对接，减少同一 diff 内改 `ingestion`+`web_app`。
 

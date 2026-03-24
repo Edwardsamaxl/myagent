@@ -125,12 +125,15 @@ class RagAgentService:
         """返回中的 `retrieval_hits` 与 `citations` 序号一致；`citations` 行格式见 `format_evidence_block_from_hits` / `format_citation_lines`。
 
         `append_to_eval_store=False` 时仍写入 trace，但不追加 `eval_records.jsonl`（供离线批评估避免污染在线聚合）。
+        reason 语义约定（与检索侧对齐）：
+        - `no_retrieval_hit`: 重排后无可用命中；
+        - `insufficient_evidence`: 有命中，但证据不足以支持可靠回答。
         """
         trace_id = self.trace_logger.new_trace_id()
         start = time.perf_counter()
         effective_top_k = top_k or self.config.retrieval_top_k
         hits, retrieval_debug = self.retriever.search_with_debug(question, top_k=effective_top_k)
-        reranked_hits = self.reranker.rerank(
+        reranked_hits, rerank_debug = self.reranker.rerank_with_debug(
             query=question,
             hits=hits,
             top_k=self.config.rerank_top_k,
@@ -158,6 +161,11 @@ class RagAgentService:
                     "fusion_mode": str(retrieval_debug.get("fusion_mode", "")),
                     "score_breakdown": json.dumps(
                         retrieval_debug.get("score_breakdown", []),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                    ),
+                    "rerank_score_breakdown": json.dumps(
+                        rerank_debug,
                         ensure_ascii=False,
                         separators=(",", ":"),
                     ),
