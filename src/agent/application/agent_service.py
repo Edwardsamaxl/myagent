@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
 from typing import Any
 
 from .rag_agent_service import RagAgentService
 from ..config import AgentConfig
 from ..core.agent_loop import SimpleAgent
+from ..core.dialogue import SessionMetaStore, classify_intent
+from ..core.dialogue.intent_schema import IntentKind
+from ..core.dialogue.query_rewrite import rewrite_for_rag
 from ..core.evidence_format import format_evidence_block_from_api_dicts
 from ..core.memory_store import MemoryStore
+from ..core.planning import build_turn_plan
 from ..core.session_store import SessionStore
 from ..core.skill_store import SkillStore
 from ..llm.providers import build_model_provider
@@ -15,7 +20,14 @@ from ..tools.registry import default_tools
 
 
 class AgentService:
-    """组合 RAG 与 SimpleAgent：检索证据由本类注入 user 消息，工具循环不重复实现检索。"""
+    """组合 RAG 与 SimpleAgent：编排见 `docs/agent-design/rag-bridge.md` 与 `dialogue-planning.md`。
+
+    - 对话终答**始终**由 `SimpleAgent` 产出；语料型且开启 RAG 时调用 `RagAgentService.answer` 做检索（及同路径内的 grounded 生成），
+      但仅将 `retrieval_hits` 格式化为「[检索证据]」注入用户消息，**不把** RAG 返回的 `answer` 当作 `chat` 的最终回复。
+    - 无命中或拒答时仍可走 `SimpleAgent`（无证据块或仅有空检索结果），由工具循环与自然语言策略兜底。
+    - 是否调用检索仅由 ``RAG_ENABLED`` / 单次请求的 ``use_rag`` 决定，**不再**按「工具/闲聊」意图二次跳过。
+    - 检索 query 经 ``rewrite_for_rag``（归一化 + 轻量指代拼接）；直连 ``/api/rag`` 仍返回完整 RAG 结果。
+    """
 
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
@@ -23,7 +35,11 @@ class AgentService:
         self.memory_store = MemoryStore(self.config.memory_file)
         self.skill_store = SkillStore(self.config.skills_dir)
         self.session_store = SessionStore(self.config.sessions_file)
+        self.session_meta_store = SessionMetaStore(self.config.data_dir / "sessions_meta.json")
         self.model = build_model_provider(self.config)
+        self.query_rewrite_mode = os.getenv("QUERY_REWRITE_MODE", "hybrid").strip().lower()
+        self.query_rewrite_temperature = float(os.getenv("QUERY_REWRITE_TEMPERATURE", "0.0"))
+        self.query_rewrite_max_tokens = int(os.getenv("QUERY_REWRITE_MAX_TOKENS", "128"))
         self.tools = default_tools(self.memory_store, self.skill_store, self.config.workspace_dir)
         self.agent = SimpleAgent(config=self.config, model=self.model, tools=self.tools)
         self.rag = RagAgentService(config=self.config, model=self.model)
@@ -38,33 +54,99 @@ class AgentService:
         skills = self.skill_store.render_for_prompt()
         return f"[MEMORY.md]\n{memory}\n\n[SKILLS]\n{skills}"
 
-    def chat(self, session_id: str, user_message: str) -> dict[str, Any]:
-        # RAG：先 answer() 得到结构化 hits；证据块格式与 generation 侧一致（见 evidence_format）。
-        rag_result: dict[str, Any] | None = None
-        if self.config.rag_enabled:
-            rag_result = self.rag.answer(user_message)
-        # 关键边界：当 RAG 已给出可回答结果时，优先返回 RAG，避免 Agent 循环“改写证据结论”。
-        if rag_result and not bool(rag_result.get("refusal", False)):
-            history = self.session_store.get_history(session_id)
-            messages = history + [
-                {"role": "user", "content": user_message},
-                {"role": "assistant", "content": str(rag_result.get("answer", ""))},
-            ]
-            self.session_store.set_history(session_id, messages)
+    def _append_turn_to_session(
+        self, session_id: str, history: list[dict[str, str]], user_text: str, assistant_text: str
+    ) -> None:
+        messages = list(history)
+        messages.append({"role": "user", "content": user_text})
+        messages.append({"role": "assistant", "content": assistant_text})
+        self.session_store.set_history(session_id, messages)
+
+    def chat(
+        self,
+        session_id: str,
+        user_message: str,
+        *,
+        use_rag: bool | None = None,
+    ) -> dict[str, Any]:
+        """`use_rag` 为 ``None`` 时遵循 ``config.rag_enabled``；否则仅本请求覆盖是否走语料检索。"""
+        rag_on = self.config.rag_enabled if use_rag is None else bool(use_rag)
+        history = self.session_store.get_history(session_id)
+        meta = self.session_meta_store.get(session_id)
+        if meta.phase == "awaiting_clarification" and meta.pending_context.strip():
+            turn_text = f"{meta.pending_context.strip()}\n{user_message.strip()}".strip()
+        else:
+            turn_text = user_message.strip()
+
+        intent = classify_intent(turn_text, history)
+
+        if intent.intent == IntentKind.AMBIGUOUS:
+            plan = build_turn_plan(intent=intent, rag_will_run=False)
+            meta.phase = "awaiting_clarification"
+            meta.pending_context = turn_text
+            meta.last_intent = intent.intent.value
+            meta.last_plan_summary = plan.summary()
+            self.session_meta_store.put(session_id, meta)
+            clarify = (intent.clarify_prompt or "请补充更多信息。").strip()
+            self._append_turn_to_session(session_id, history, user_message, clarify)
             return {
-                "answer": str(rag_result.get("answer", "")),
+                "answer": clarify,
                 "steps_used": 0,
                 "tool_calls": [],
                 "session_id": session_id,
+                "rag": None,
+            }
+
+        meta.pending_context = ""
+        meta.phase = "idle"
+        rag_query = rewrite_for_rag(
+            turn_text,
+            history,
+            intent,
+            model=self.model,
+            mode=self.query_rewrite_mode,
+            llm_temperature=self.query_rewrite_temperature,
+            llm_max_tokens=self.query_rewrite_max_tokens,
+        )
+
+        rag_result: dict[str, Any] | None = None
+
+        if rag_on:
+            rag_result = self.rag.answer(rag_query, append_to_eval_store=False)
+            plan = build_turn_plan(intent=intent, rag_will_run=True)
+            meta.last_intent = intent.intent.value
+            meta.last_plan_summary = plan.summary()
+            self.session_meta_store.put(session_id, meta)
+
+            hits = rag_result.get("retrieval_hits") or []
+            user_input = turn_text
+            if hits:
+                context_block = format_evidence_block_from_api_dicts(hits)
+                user_input = (
+                    f"{turn_text}\n\n[检索证据]\n{context_block}\n\n"
+                    "请仅根据上述检索证据回答；若证据不足，请拒答：证据不足。"
+                )
+            result = self.agent.run(
+                user_input=user_input,
+                history_messages=history,
+                long_context=self.build_long_context(),
+            )
+            self.session_store.set_history(session_id, result.messages)
+            return {
+                "answer": result.answer,
+                "steps_used": result.steps_used,
+                "tool_calls": result.tool_calls,
+                "session_id": session_id,
                 "rag": rag_result,
             }
-        history = self.session_store.get_history(session_id)
-        user_input = user_message
-        if rag_result and rag_result.get("retrieval_hits"):
-            context_block = format_evidence_block_from_api_dicts(rag_result["retrieval_hits"])
-            user_input = f"{user_message}\n\n[检索证据]\n{context_block}"
+
+        plan = build_turn_plan(intent=intent, rag_will_run=False)
+        meta.last_intent = intent.intent.value
+        meta.last_plan_summary = plan.summary()
+        self.session_meta_store.put(session_id, meta)
+
         result = self.agent.run(
-            user_input=user_input,
+            user_input=turn_text,
             history_messages=history,
             long_context=self.build_long_context(),
         )
@@ -101,6 +183,7 @@ class AgentService:
             "workspace_path": str(self.config.workspace_dir),
             "framework": {
                 "rag_enabled": self.config.rag_enabled,
+                "query_rewrite_mode": self.query_rewrite_mode,
                 "chunk_size": self.config.chunk_size,
                 "chunk_overlap": self.config.chunk_overlap,
                 "retrieval_top_k": self.config.retrieval_top_k,
@@ -116,6 +199,21 @@ class AgentService:
                 "eval_records_file": str(self.config.eval_records_file),
             },
         }
+
+    def list_chat_sessions(self) -> list[dict[str, str | int]]:
+        return self.session_store.list_sessions_meta()
+
+    def get_chat_history(self, session_id: str) -> list[dict[str, str]]:
+        return list(self.session_store.get_history(session_id))
+
+    def ensure_chat_session(self, session_id: str) -> None:
+        self.session_store.ensure_session(session_id)
+
+    def delete_chat_session(self, session_id: str) -> bool:
+        ok = self.session_store.delete_session(session_id)
+        if ok:
+            self.session_meta_store.delete(session_id)
+        return ok
 
     def get_memory(self) -> str:
         return self.memory_store.read()

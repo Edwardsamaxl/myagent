@@ -2,6 +2,8 @@
 
 > 本文供**随时查阅与修改**：谁负责哪类改动、主要动哪些路径、与谁交接。  
 > **接口与契约**以 [coordination.md](coordination.md) 为准；实现后请同步更新该文档 §3。  
+> **Agent 行为与全链路设计稿**见 [agent-design/README.md](agent-design/README.md)；设计不能替代 §3，契约变更仍走 §3.12。  
+> **工作模式**（含「AI 不会自动读 coordination」）见 [coordination.md §0](coordination.md)。  
 > 仓库级协作底线见 [.cursor/rules/multi-agent-collaboration.mdc](../.cursor/rules/multi-agent-collaboration.mdc)。
 
 ---

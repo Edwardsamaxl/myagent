@@ -12,6 +12,7 @@ from __future__ import annotations
 """
 
 import json
+import re
 from dataclasses import dataclass
 
 from ..config import AgentConfig
@@ -27,11 +28,87 @@ SYSTEM_PROMPT = """你是一个可调用工具的助手。
 你有以下长期上下文（记忆与技能）：
 {long_context}
 
-当你需要调用工具时，请严格只输出 JSON，格式如下：
-{{"tool":"工具名","input":"传给工具的字符串参数"}}
+【工具调用硬性协议（非常重要）】
+1) 只要你决定“需要调用工具”，你必须输出且只能输出一行 JSON，对象格式固定为：
+   {{"tool":"工具名","input":"传给工具的字符串参数"}}
+2) 工具调用时：禁止输出任何解释、前后缀、Markdown、代码块、标签（例如“[工具] …”）、多余空行。
+   - 错误示例（不要这样）：我将调用工具… {{"tool":"get_time","input":""}}
+   - 错误示例（不要这样）：[工具] get_time()
+3) 只有当你不需要调用工具时，才输出自然语言答案（此时不要输出 JSON）。
 
-当你已经可以直接回答用户时，请输出自然语言答案，不要输出 JSON。
+【少样例】
+- 用户：现在几点？
+  你：{{"tool":"get_time","input":""}}
+- 用户：读取记忆
+  你：{{"tool":"read_memory","input":""}}
+- 用户：计算 2+3*4
+  你：{{"tool":"calculate","input":"2+3*4"}}
 """
+
+
+def _extract_first_json_object(text: str) -> str | None:
+    """从文本中提取第一个完整的 `{...}` JSON 对象片段。"""
+    s = (text or "").strip()
+    if not s:
+        return None
+
+    depth = 0
+    start_idx: int | None = None
+    for idx, ch in enumerate(s):
+        if ch == "{":
+            if depth == 0:
+                start_idx = idx
+            depth += 1
+            continue
+        if ch != "}":
+            continue
+        if depth <= 0 or start_idx is None:
+            continue
+        depth -= 1
+        if depth == 0:
+            return s[start_idx : idx + 1]
+    return None
+
+
+def _try_parse_tool_call_json(candidate: str) -> dict[str, str] | None:
+    """解析并校验工具调用 JSON：{"tool": ..., "input": ...}。"""
+    if not candidate:
+        return None
+    try:
+        data = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    if "tool" not in data or "input" not in data:
+        return None
+    return {"tool": str(data["tool"]), "input": str(data["input"])}
+
+
+_TOOL_CALL_FALLBACK_RE = re.compile(
+    r"(?:^\s*\[工具\]\s*)?(?P<tool>[a-zA-Z_]\w*)\s*\(\s*(?P<input>[^)]*)\s*\)\s*$"
+)
+
+
+def _try_parse_tool_call_fallback(text: str) -> dict[str, str] | None:
+    """兜底解析：兼容模型输出 `[工具] get_time()` 这类非 JSON 格式。
+
+    仅在整条输出“看起来像一次工具调用”时触发，避免误判普通文本。
+    """
+    s = (text or "").strip()
+    if not s:
+        return None
+    m = _TOOL_CALL_FALLBACK_RE.match(s)
+    if not m:
+        return None
+    tool = str(m.group("tool") or "").strip()
+    raw_inp = str(m.group("input") or "").strip()
+    # 去掉常见的引号包裹
+    if (raw_inp.startswith('"') and raw_inp.endswith('"')) or (
+        raw_inp.startswith("'") and raw_inp.endswith("'")
+    ):
+        raw_inp = raw_inp[1:-1]
+    return {"tool": tool, "input": raw_inp}
 
 
 @dataclass
@@ -56,7 +133,10 @@ class SimpleAgent:
     def _build_system_prompt(self, long_context: str) -> str:
         desc = "\n".join(f"- {t.name}: {t.description}" for t in self.tools.values())
         context = long_context.strip() or "暂无。"
-        return SYSTEM_PROMPT.format(tool_desc=desc, long_context=context)
+        # 避免 `str.format` 与提示词中的 `{...}` 示例冲突导致 KeyError。
+        return (
+            SYSTEM_PROMPT.replace("{tool_desc}", desc).replace("{long_context}", context)
+        )
 
     def run(
         self,
@@ -117,14 +197,27 @@ class SimpleAgent:
 
     @staticmethod
     def _try_parse_tool_call(text: str) -> dict[str, str] | None:
-        if not text.startswith("{") or not text.endswith("}"):
+        """尽量鲁棒地解析工具调用 JSON。
+
+        允许模型输出包含前后解释文本，例如：
+        "好的，接下来我会……\n{\"tool\":\"read_memory\",\"input\":\"\"}"
+        只要能在文本中找到一个形如 {"tool":..., "input":...} 的 JSON 对象即可。
+        """
+        s = (text or "").strip()
+        if not s:
             return None
-        try:
-            data = json.loads(text)
-        except json.JSONDecodeError:
-            return None
-        if not isinstance(data, dict):
-            return None
-        if "tool" not in data or "input" not in data:
-            return None
-        return {"tool": str(data["tool"]), "input": str(data["input"])}
+
+        # 快路径：整条就是 JSON
+        if s.startswith("{") and s.endswith("}"):
+            parsed = _try_parse_tool_call_json(s)
+            if parsed:
+                return parsed
+
+        # 慢路径：在文本中寻找第一个完整 `{...}` JSON 对象
+        candidate = _extract_first_json_object(s)
+        if not candidate:
+            return _try_parse_tool_call_fallback(s)
+        parsed = _try_parse_tool_call_json(candidate)
+        if parsed:
+            return parsed
+        return _try_parse_tool_call_fallback(s)

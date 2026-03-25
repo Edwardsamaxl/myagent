@@ -37,3 +37,32 @@ class SessionStore:
         data = self._load()
         data[session_id] = filtered[-40:]
         self._save(data)
+
+    def delete_session(self, session_id: str) -> bool:
+        data = self._load()
+        if session_id not in data:
+            return False
+        del data[session_id]
+        self._save(data)
+        return True
+
+    def ensure_session(self, session_id: str) -> None:
+        """若无该会话则创建空历史（供「新建对话」立即出现在服务端列表）。"""
+        data = self._load()
+        if session_id not in data:
+            data[session_id] = []
+            self._save(data)
+
+    def list_sessions_meta(self) -> list[dict[str, str | int]]:
+        """供 Web 侧栏展示：id、条数、首条用户预览。"""
+        data = self._load()
+        out: list[dict[str, str | int]] = []
+        for sid, msgs in data.items():
+            preview = ""
+            for m in msgs:
+                if m.get("role") == "user":
+                    c = (m.get("content") or "").strip().replace("\n", " ")
+                    preview = c[:72] + ("…" if len(c) > 72 else "")
+                    break
+            out.append({"id": sid, "message_count": len(msgs), "preview": preview or "（空会话）"})
+        return sorted(out, key=lambda x: str(x["id"]))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 
 from ..config import AgentConfig
@@ -195,7 +196,9 @@ class RagAgentService:
                     "score": hit.score,
                     "source": hit.source,
                     "metadata": hit.metadata,
-                    "text_preview": hit.text[:180],
+                    # 供对话层用作“证据上下文”的截断预览长度。
+                    # 过短会导致数值/关键句被截断，进而出现 rag.answer 正确但 chat.answer 无关/拒答的现象。
+                    "text_preview": hit.text[: int(os.getenv("RAG_HIT_TEXT_PREVIEW_CHARS", "500"))],
                 }
                 for hit in reranked_hits
             ],

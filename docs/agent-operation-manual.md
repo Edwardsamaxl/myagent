@@ -8,10 +8,11 @@
 ## 1) 先读什么（开工前 10 分钟）
 
 每个 Agent 开工前按顺序阅读：
-1. `docs/coordination.md`（接口契约与边界，必须先对齐）
-2. 当日计划文档（如 `docs/day3-daily-plan.md`）
-3. 与自己职责相关的核心代码目录
-4. 最新评估结果（`runtime/day3/*.json`）
+1. `docs/coordination.md`（接口契约与边界，必须先对齐；**§0** 说明：模型不会自动读文档，须由你在任务里要求先读）
+2. `docs/agent-design/README.md`（若任务涉及 Agent 循环、chat 扩展、RAG 桥接等设计对齐时读；不替代 §3）
+3. 当日计划文档（如 `docs/day3-daily-plan.md`）
+4. 与自己职责相关的核心代码目录
+5. 最新评估结果（`runtime/day3/*.json`）
 
 禁止跳过契约文档直接改代码。
 

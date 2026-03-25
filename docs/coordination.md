@@ -7,7 +7,30 @@
 
 ---
 
+## 0. 多 Agent 工作模式（必读摘要）
+
+**Cursor 里的各个「Agent」不会自动读本文档。** 它们是按你的提示词与 **Cursor Rules**（例如 [.cursor/rules/multi-agent-collaboration.mdc](../.cursor/rules/multi-agent-collaboration.mdc)）被调用；**是否打开 `coordination.md` 取决于你在任务里有没有明确要求**（或规则里是否写死要先读）。因此协作上默认这样约定：
+
+1. **你在指派任务时**写一句：先读 `docs/coordination.md` 与本日 `docs/day*-*.md`，再改代码。  
+2. **契约与事实**以本文 **§3** 为准；改 API / 错误码 / 对外 JSON 形状，**必须先改 §3 再放行实现**（§3.12）。  
+3. **每天怎么执行**（顺序、验收、命令）见 [agent-operation-manual.md](agent-operation-manual.md)。  
+4. **Agent 行为与全链路设计稿**（状态机、chat 扩展草案、RAG 桥接等）集中在 [agent-design/README.md](agent-design/README.md)；设计稿**不能**替代 §3，落地前须与 §3 对齐并经 PM 门禁（见 [agent-design/review-gate.md](agent-design/review-gate.md)）。  
+5. **谁负责什么文件**见 [agent-roles.md](agent-roles.md)；**易冲突文件与合并顺序**见本文 **§5**。
+
+---
+
 ## 1. 文档索引（当前 `docs/`）
+
+### 1.1 协调与设计（优先读）
+
+| 文件 | 用途 |
+|------|------|
+| [coordination.md](coordination.md) | 本文：接口约定 §3、任务依赖、冲突策略 |
+| [agent-operation-manual.md](agent-operation-manual.md) | 开工顺序、角色清单、标准工作流 |
+| [agent-roles.md](agent-roles.md) | 各 Agent 职责与常改路径 |
+| [agent-design/README.md](agent-design/README.md) | Agent 全链路设计稿目录与阅读顺序 |
+
+### 1.2 周计划与 Day 文档
 
 | 文件 | 用途 |
 |------|------|
@@ -16,9 +39,15 @@
 | [day2-daily-plan.md](day2-daily-plan.md) | Day 2 当日任务、依赖与验收 |
 | [day2-final-summary.md](day2-final-summary.md) | Day 2 最终统一总结（替代分散 delivery 文档） |
 | [day3-daily-plan.md](day3-daily-plan.md) | Day 3 开工任务、依赖与验收 |
-| [coordination.md](coordination.md) | 本文：接口约定、任务依赖、冲突策略 |
-| [agent-roles.md](agent-roles.md) | 各 Agent 职责分工（可随时改） |
+| [day2-ingestion-notes.md](day2-ingestion-notes.md) | Day 2 ingestion 备注 |
+| [project-progress-summary.md](project-progress-summary.md) | 项目进度汇总（若维护） |
+
+### 1.3 环境与杂项
+
+| 文件 | 用途 |
+|------|------|
 | [explain-agent-prompt.md](explain-agent-prompt.md) | 解释与学习助手 Prompt（可直接复制） |
+| [ollama-default-setup.md](ollama-default-setup.md) | Ollama 默认环境说明 |
 
 ---
 
@@ -83,7 +112,7 @@
 ### 3.6 HTTP 错误响应（通用）
 
 - **形状**：`{"error": "<可读说明>", "code": "<机器可读标识>"}`，HTTP 4xx/5xx 与语义一致。
-- **常见 `code`**：`empty_body`（请求体为空）、`invalid_json`（非合法 JSON 对象）、`validation_error`（业务必填项缺失）、`invalid_top_k`（`/api/rag` 的 `top_k` 非整数）、`invalid_chunk_params`（`/api/ingest` 分块参数非法）、`model_update_failed`（模型切换校验失败）、`rag_upstream_http_error`（模型服务返回 4xx/5xx，HTTP 502）、`rag_model_unavailable`（模型服务连接失败或超时，HTTP 503）、`rag_upstream_request_error`（其他请求层失败，HTTP 502）、`rag_internal_error`（`/api/rag` 未分类异常，HTTP 500）。
+- **常见 `code`**：`empty_body`（请求体为空）、`invalid_json`（非合法 JSON 对象）、`validation_error`（业务必填项缺失）、`invalid_top_k`（`/api/rag` 的 `top_k` 非整数）、`invalid_chunk_params`（`/api/ingest` 分块参数非法）、`model_update_failed`（模型切换校验失败）、`not_found`（如删除不存在的会话，HTTP 404）、`rag_upstream_http_error`（模型服务返回 4xx/5xx，HTTP 502）、`rag_model_unavailable`（模型服务连接失败或超时，HTTP 503）、`rag_upstream_request_error`（其他请求层失败，HTTP 502）、`rag_internal_error`（`/api/rag` 未分类异常，HTTP 500）。
 
 ### 3.7 可选 CORS
 
@@ -94,7 +123,15 @@
 ### 3.8 `POST /api/chat`（`src/agent/interfaces/web_app.py`）
 
 - **请求 JSON**：`message`（必填，非空字符串）、`session_id`（可选，默认 `default`）。
+- **请求 JSON（可选）**：`use_rag`（布尔）。省略时遵循 `RAG_ENABLED`；传入时**仅本请求**覆盖是否对语料类意图执行检索（`AgentService.chat` 内与 `KNOWLEDGE_CORPUS` 分支联动）。
 - **响应**：由 `AgentService.chat` 返回，包含 `answer`、`steps_used`、`tool_calls`、`session_id`；若 `RAG_ENABLED=true`，另有 `rag`（与 §3.9 同结构的 RAG 结果或检索为空时的占位）。
+
+说明（Web UI）：前端 `检索增强` 开关的默认值回读后端 `framework.rag_enabled`，并用浏览器 `sessionStorage` 仅在当前标签页/会话内记忆；关闭浏览器/新建会话后将重新跟随后端默认。
+- **多会话（Web UI）**：
+  - `GET /api/sessions` → `{ "sessions": [ { "id", "message_count", "preview" } ] }`
+  - `POST /api/session`，body `{"session_id": "<uuid>"}` → 确保该 `session_id` 在 `sessions.json` 中存在（空历史）
+  - `GET /api/session/<session_id>/history` → `{ "session_id", "messages": [ { "role", "content" } ] }`
+  - `DELETE /api/session/<session_id>` → 删除该会话历史及对应 `sessions_meta` 条目；不存在则 `404` + `code=not_found`
 
 ### 3.9 `POST /api/rag`（`src/agent/interfaces/web_app.py`）
 
@@ -169,6 +206,20 @@
 - **实现边界**：
   - Agent C 主责 `src/agent/core/generation.py`、`src/agent/core/evidence_format.py` 及相关编排调用；
   - 不在路由层实现证据筛选逻辑，不改 `/api/rag` 主字段契约。
+
+### 3.15（拟稿 · Agent D）`POST /api/chat` 扩展与错误码增补
+
+> **状态**：草案，供 PR 评审；**未合并实现前**仍以 §3.8 与当前代码为准。全文展开见 [agent-design/api.md](agent-design/api.md)。
+
+- **请求（在 §3.8 基础上扩展，均为可选增量）**：`messages`（`{role,content}[]`）、`use_rag`（boolean）、`client_trace_id`（string）、`return_trace_id`（boolean）。`message` 仍为必填；`session_id` 仍可选。
+- **响应（增量字段）**：`client_trace_id`（回显）、`trace_id`（当 `return_trace_id=true` 且本请求可关联 RAG trace 等时）。
+- **`messages` 与 session（MVP 建议）**：`messages` 作**本次推理临时上文**，不替代 `SessionStore` 全量；最后一条 user 为 `message`。若变更合并策略须升版本节。
+- **流式（MVP）**：保持非流式 `POST /api/chat`；流式另增端点，见设计文档。
+- **§3.6 拟增补 `code`（实现 chat 上游异常映射后写入正式列表）**：
+  - `chat_upstream_http_error`（502）
+  - `chat_model_unavailable`（503）
+  - `chat_upstream_request_error`（502）
+  - `chat_internal_error`（500）
 
 ---
 

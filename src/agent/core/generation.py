@@ -60,7 +60,11 @@ class GroundedGenerator:
             )
 
         # 固化证据选取：仅对选中的证据生成回答与引用，减少“有命中但引用弱关联”。
-        evidence_hits = select_evidence_hits(question=question, hits=hits, max_evidence=3)
+        evidence_hits = select_evidence_hits(
+            question=question,
+            hits=hits,
+            max_evidence=3,
+        )
         context = format_evidence_block_from_hits(evidence_hits)
         citations = format_citation_lines(evidence_hits)
 
@@ -98,6 +102,16 @@ class GroundedGenerator:
         "无法给出可靠结论",
         "超出证据范围",
     )
+
+    @classmethod
+    def _looks_like_insufficient(cls, text: str) -> bool:
+        if text.startswith(("拒答：", "拒答:")):
+            return True
+        first_line = text.split("\n", 1)[0].strip()
+        if first_line.startswith("当前检索不到"):
+            return True
+        return any(pattern in text for pattern in cls._INSUFFICIENT_PATTERNS)
+
     def _postprocess_answer(
         self,
         raw: str,
@@ -109,13 +123,23 @@ class GroundedGenerator:
         text = raw.strip()
         if not text:
             return "拒答：证据不足，无法给出可靠结论。", True, "insufficient_evidence"
-        if text.startswith(("拒答：", "拒答:")):
-            return text, True, "insufficient_evidence"
-        first_line = text.split("\n", 1)[0].strip()
-        if first_line.startswith("当前检索不到"):
-            # 注意：本分支只发生在“有命中但模型仍给空检索式拒答”的输出，语义统一归为证据不足。
-            return text, True, "insufficient_evidence"
-        if any(pattern in text for pattern in self._INSUFFICIENT_PATTERNS):
+        if self._looks_like_insufficient(text):
+            # 模型可能会在“证据看起来足够”时也直接拒答；此处用 evidence anchor coverage 进行降级兜底，
+            # 避免 false refusal（证据可答但被硬拒答）。
+            if self.strict_policy and hits:
+                evidence_cov, _ = evaluate_anchor_coverage(
+                    question=question,
+                    answer=question,  # 让 anchor 集与问题锚点一致
+                    hits=hits,
+                )
+                if evidence_cov >= self.cautious_coverage_threshold:
+                    cautious = self._cautious_template(
+                        question=question, hits=hits, citation_ids=citation_ids
+                    )
+                    if cautious.startswith(("拒答：", "拒答:")):
+                        return cautious, True, "insufficient_evidence"
+                    return cautious, False, ""
+            first_line = text.split("\n", 1)[0].strip()
             normalized = text
             if not normalized.startswith(("拒答：", "拒答:")):
                 normalized = f"拒答：{first_line or '证据不足，无法给出可靠结论。'}"
