@@ -125,8 +125,8 @@
 - **请求 JSON**：`message`（必填，非空字符串）、`session_id`（可选，默认 `default`）。
 - **请求 JSON（可选）**：`use_rag`（布尔）。省略时遵循 `RAG_ENABLED`；传入时**仅本请求**覆盖是否对语料类意图执行检索（`AgentService.chat` 内与 `KNOWLEDGE_CORPUS` 分支联动）。
 - **响应**：由 `AgentService.chat` 返回，包含 `answer`、`steps_used`、`tool_calls`、`session_id`；若 `RAG_ENABLED=true`，另有 `rag`（与 §3.9 同结构的 RAG 结果或检索为空时的占位）。
-
-说明（Web UI）：前端 `检索增强` 开关的默认值回读后端 `framework.rag_enabled`，并用浏览器 `sessionStorage` 仅在当前标签页/会话内记忆；关闭浏览器/新建会话后将重新跟随后端默认。
+- **`GET /api/state`**（内置 Web UI 使用）：除 `model_provider` / `model_name` 外，包含 **`model_providers`**：`[{ "id", "label" }, ...]`，与 `build_model_provider` 支持的提供商一致，用于动态填充下拉框；若 `.env` 中 `MODEL_PROVIDER` 不在列表中，UI 会追加「当前 .env」选项。
+- **说明（Web UI）**：`检索增强` 默认值回读 `framework.rag_enabled`，并用 `sessionStorage` 仅在当前标签页内记忆；关闭标签页后将重新跟随后端默认。
 - **多会话（Web UI）**：
   - `GET /api/sessions` → `{ "sessions": [ { "id", "message_count", "preview" } ] }`
   - `POST /api/session`，body `{"session_id": "<uuid>"}` → 确保该 `session_id` 在 `sessions.json` 中存在（空历史）
