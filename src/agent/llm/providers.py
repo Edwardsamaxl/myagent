@@ -10,6 +10,18 @@ from ..config import AgentConfig
 
 Message = dict[str, str]
 
+# 与 build_model_provider 分支一致；Web UI 与文档可共用，避免下拉框与配置漂移。
+MODEL_PROVIDER_CHOICES: list[tuple[str, str]] = [
+    ("ollama", "Ollama（本地）"),
+    ("openai_compatible", "OpenAI 兼容 API"),
+    ("anthropic_compatible", "Anthropic 兼容 / 中转"),
+    ("mock", "mock（调试）"),
+]
+
+
+def supported_model_providers() -> list[dict[str, str]]:
+    return [{"id": pid, "label": label} for pid, label in MODEL_PROVIDER_CHOICES]
+
 
 class ModelProvider(ABC):
     @abstractmethod
@@ -49,11 +61,39 @@ class OllamaProvider(ModelProvider):
         return data["message"]["content"]
 
 
-class OpenAICompatibleProvider(ModelProvider):
-    def __init__(self, base_url: str, api_key: str, model_name: str) -> None:
+class _HTTPChatProvider(ModelProvider):
+    """OpenAI/Anthropic 兼容 API 的公共基类"""
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model_name: str,
+        *,
+        auth_header: str = "Authorization",
+        auth_scheme: str = "Bearer",
+        extra_headers: dict[str, str] | None = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model_name = model_name
+        self._auth_header = auth_header
+        self._auth_scheme = auth_scheme
+        self._extra_headers = extra_headers or {}
+
+    def _build_headers(self) -> dict[str, str]:
+        headers = {
+            "Content-Type": "application/json",
+            self._auth_header: f"{self._auth_scheme} {self.api_key}",
+        }
+        headers.update(self._extra_headers)
+        return headers
+
+    def _parse_response(self, data: dict[str, Any]) -> str:
+        """子类可覆盖此方法以自定义响应解析"""
+        if "choices" in data:
+            return data["choices"][0]["message"]["content"]
+        return str(data)
 
     def generate(
         self,
@@ -62,23 +102,75 @@ class OpenAICompatibleProvider(ModelProvider):
         max_tokens: int,
     ) -> str:
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY 为空，无法使用 openai_compatible 提供商。")
+            raise ValueError(f"{self.__class__.__name__}: API key 为空")
 
-        url = f"{self.base_url}/v1/chat/completions"
-        payload: dict[str, Any] = {
+        payload = self._build_payload(messages, temperature, max_tokens)
+        url = f"{self.base_url}{self._endpoint()}"
+        response = requests.post(
+            url,
+            headers=self._build_headers(),
+            json=payload,
+            timeout=120,
+        )
+        response.raise_for_status()
+        return self._parse_response(response.json())
+
+    def _endpoint(self) -> str:
+        """子类返回 API 端点路径"""
+        raise NotImplementedError
+
+    def _build_payload(
+        self, messages: list[Message], temperature: float, max_tokens: int
+    ) -> dict[str, Any]:
+        """子类返回请求 payload"""
+        raise NotImplementedError
+
+
+class OpenAICompatibleProvider(_HTTPChatProvider):
+    """OpenAI 兼容 API"""
+
+    def _endpoint(self) -> str:
+        return "/v1/chat/completions"
+
+    def _build_payload(
+        self, messages: list[Message], temperature: float, max_tokens: int
+    ) -> dict[str, Any]:
+        return {
             "model": self.model_name,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
+
+
+class AnthropicCompatibleProvider(_HTTPChatProvider):
+    """Anthropic 兼容 API (如 api.minimaxi.com)"""
+
+    def _endpoint(self) -> str:
+        return "/v1/messages"
+
+    def _build_payload(
+        self, messages: list[Message], temperature: float, max_tokens: int
+    ) -> dict[str, Any]:
+        return {
+            "model": self.model_name,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
         }
-        response = requests.post(url, headers=headers, json=payload, timeout=120)
-        response.raise_for_status()
-        data = response.json()
-        return data["choices"][0]["message"]["content"]
+
+    def _build_headers(self) -> dict[str, str]:
+        headers = super()._build_headers()
+        headers["anthropic-version"] = "2023-06-01"
+        return headers
+
+    def _parse_response(self, data: dict[str, Any]) -> str:
+        # Anthropic API 返回格式: {"content": [{"type": "text", "text": "..."}]}
+        if "content" in data and isinstance(data["content"], list):
+            for item in data["content"]:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    return item.get("text", "")
+        return super()._parse_response(data)
 
 
 class MockProvider(ModelProvider):
@@ -111,9 +203,15 @@ def build_model_provider(config: AgentConfig) -> ModelProvider:
             config.openai_api_key,
             config.model_name,
         )
+    if provider == "anthropic_compatible":
+        return AnthropicCompatibleProvider(
+            config.anthropic_base_url,
+            config.anthropic_api_key,
+            config.model_name,
+        )
     if provider == "mock":
         return MockProvider(config.model_name)
 
     raise ValueError(
-        "MODEL_PROVIDER 不支持。可选值: ollama | openai_compatible | mock"
+        "MODEL_PROVIDER 不支持。可选值: ollama | openai_compatible | anthropic_compatible | mock"
     )

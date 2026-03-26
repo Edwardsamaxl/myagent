@@ -9,13 +9,11 @@ from ..config import AgentConfig
 from ..core.agent_loop import SimpleAgent
 from ..core.dialogue import SessionMetaStore, classify_intent
 from ..core.dialogue.intent_schema import IntentKind
-from ..core.dialogue.query_rewrite import rewrite_for_rag
-from ..core.evidence_format import format_evidence_block_from_api_dicts
 from ..core.memory_store import MemoryStore
 from ..core.planning import build_turn_plan
 from ..core.session_store import SessionStore
 from ..core.skill_store import SkillStore
-from ..llm.providers import build_model_provider
+from ..llm.providers import build_model_provider, supported_model_providers
 from ..tools.registry import default_tools
 
 
@@ -40,9 +38,12 @@ class AgentService:
         self.query_rewrite_mode = os.getenv("QUERY_REWRITE_MODE", "hybrid").strip().lower()
         self.query_rewrite_temperature = float(os.getenv("QUERY_REWRITE_TEMPERATURE", "0.0"))
         self.query_rewrite_max_tokens = int(os.getenv("QUERY_REWRITE_MAX_TOKENS", "128"))
-        self.tools = default_tools(self.memory_store, self.skill_store, self.config.workspace_dir)
-        self.agent = SimpleAgent(config=self.config, model=self.model, tools=self.tools)
+        # 先创建 rag service，再创建 tools（以便传入 rag 工具）
         self.rag = RagAgentService(config=self.config, model=self.model)
+        self.tools = default_tools(
+            self.memory_store, self.skill_store, self.config.workspace_dir, rag_service=self.rag
+        )
+        self.agent = SimpleAgent(config=self.config, model=self.model, tools=self.tools)
 
     def _ensure_dirs(self) -> None:
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
@@ -99,48 +100,7 @@ class AgentService:
 
         meta.pending_context = ""
         meta.phase = "idle"
-        rag_query = rewrite_for_rag(
-            turn_text,
-            history,
-            intent,
-            model=self.model,
-            mode=self.query_rewrite_mode,
-            llm_temperature=self.query_rewrite_temperature,
-            llm_max_tokens=self.query_rewrite_max_tokens,
-        )
-
-        rag_result: dict[str, Any] | None = None
-
-        if rag_on:
-            rag_result = self.rag.answer(rag_query, append_to_eval_store=False)
-            plan = build_turn_plan(intent=intent, rag_will_run=True)
-            meta.last_intent = intent.intent.value
-            meta.last_plan_summary = plan.summary()
-            self.session_meta_store.put(session_id, meta)
-
-            hits = rag_result.get("retrieval_hits") or []
-            user_input = turn_text
-            if hits:
-                context_block = format_evidence_block_from_api_dicts(hits)
-                user_input = (
-                    f"{turn_text}\n\n[检索证据]\n{context_block}\n\n"
-                    "请仅根据上述检索证据回答；若证据不足，请拒答：证据不足。"
-                )
-            result = self.agent.run(
-                user_input=user_input,
-                history_messages=history,
-                long_context=self.build_long_context(),
-            )
-            self.session_store.set_history(session_id, result.messages)
-            return {
-                "answer": result.answer,
-                "steps_used": result.steps_used,
-                "tool_calls": result.tool_calls,
-                "session_id": session_id,
-                "rag": rag_result,
-            }
-
-        plan = build_turn_plan(intent=intent, rag_will_run=False)
+        plan = build_turn_plan(intent=intent, rag_will_run=rag_on)
         meta.last_intent = intent.intent.value
         meta.last_plan_summary = plan.summary()
         self.session_meta_store.put(session_id, meta)
@@ -156,7 +116,7 @@ class AgentService:
             "steps_used": result.steps_used,
             "tool_calls": result.tool_calls,
             "session_id": session_id,
-            "rag": rag_result,
+            "rag": None,
         }
 
     def update_model(self, provider: str, model_name: str) -> dict[str, str]:
@@ -176,6 +136,7 @@ class AgentService:
         return {
             "model_provider": self.config.model_provider,
             "model_name": self.config.model_name,
+            "model_providers": supported_model_providers(),
             "sessions": self.session_store.list_session_ids(),
             "skills": self.skill_store.list_skills(),
             "memory_path": str(self.config.memory_file),

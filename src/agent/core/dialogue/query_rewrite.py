@@ -140,14 +140,17 @@ def rewrite_for_rag(
         return rule_query
     if model is None:
         return rule_query
-    llm_query = _llm_rewrite(
-        turn_text=turn_text,
-        history=history,
-        rule_query=rule_query,
-        model=model,
-        temperature=llm_temperature,
-        max_tokens=llm_max_tokens,
-    )
+    try:
+        llm_query = _llm_rewrite(
+            turn_text=turn_text,
+            history=history,
+            rule_query=rule_query,
+            model=model,
+            temperature=llm_temperature,
+            max_tokens=llm_max_tokens,
+        )
+    except Exception:
+        return rule_query
     if not llm_query:
         return rule_query
     if mode_norm == "llm":

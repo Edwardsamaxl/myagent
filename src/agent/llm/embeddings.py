@@ -16,24 +16,40 @@ class EmbeddingProvider(ABC):
 
 
 class OllamaEmbeddingProvider(EmbeddingProvider):
+    # 并行 worker 数量
+    _MAX_WORKERS = 8
+
     def __init__(self, base_url: str, model_name: str) -> None:
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
 
     def embed_texts(self, texts: list[str]) -> list[list[float]]:
-        vectors: list[list[float]] = []
-        for text in texts:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        if not texts:
+            return []
+        vectors: list[list[float]] = [None] * len(texts)
+
+        def _embed_one(idx_and_text: tuple[int, str]) -> tuple[int, list[float]]:
+            idx, text = idx_and_text
             response = requests.post(
                 f"{self.base_url}/api/embeddings",
                 json={"model": self.model_name, "prompt": text},
-                timeout=120,
+                timeout=60,
             )
             response.raise_for_status()
             data = response.json()
             vec = data.get("embedding")
             if not isinstance(vec, list):
                 raise ValueError("Ollama embeddings 返回格式异常：缺少 embedding 列表。")
-            vectors.append([float(x) for x in vec])
+            return idx, [float(x) for x in vec]
+
+        with ThreadPoolExecutor(max_workers=self._MAX_WORKERS) as executor:
+            futures = {executor.submit(_embed_one, (i, t)): i for i, t in enumerate(texts)}
+            for future in as_completed(futures):
+                idx, vec = future.result()
+                vectors[idx] = vec
+
         return vectors
 
 

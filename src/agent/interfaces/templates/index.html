@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini Agent</title>
+  <link rel="stylesheet" href="/static/chat.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">M</div>
+        <span class="title">Mini Agent</span>
+      </div>
+
+      <button class="new-chat-btn" id="btnNewChat">
+        <span class="icon">+</span>
+        <span>新对话</span>
+      </button>
+
+      <div class="sidebar-search">
+        <input type="text" id="searchInput" placeholder="搜索对话..." />
+      </div>
+
+      <div class="chat-list" id="chatList"></div>
+
+      <div class="sidebar-footer">
+        <button class="settings-btn" id="btnOpenModel">
+          <span>⚙</span>
+          <span>模型设置</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="chat-header">
+        <span class="chat-header-title" id="chatTitle">新对话</span>
+        <span class="chat-header-model" id="modelBadge">MiniMax-M2.7</span>
+      </header>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="composer">
+        <div class="composer-inner">
+          <textarea id="input" rows="1" placeholder="输入消息... (Enter 发送，Shift+Enter 换行)"></textarea>
+          <button class="send-btn" id="btnSend">↑</button>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Model Modal -->
+  <div class="modal-backdrop" id="modelModal">
+    <div class="modal">
+      <h2>模型设置</h2>
+      <div class="form-group">
+        <label>Provider</label>
+        <select id="provider"></select>
+      </div>
+      <div class="form-group">
+        <label>Model Name</label>
+        <input id="modelName" type="text" placeholder="MiniMax-M2.7" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="btnCancelModel">取消</button>
+        <button class="btn-save" id="btnSaveModel">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

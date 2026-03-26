@@ -24,14 +24,14 @@ class GroundedGenerator:
     """基于检索命中生成回答：引用编号与证据块序号一致，拒答与 `GenerationResult.reason` 可观测。"""
 
     # 若检索返回结构或证据拼接方式变化，请先与检索侧对齐，再改本段（见 evidence_format 模块说明）。
-    SYSTEM_PROMPT = """你是金融知识助手。回答必须遵循：
-1) 只基于给定证据回答，不允许臆测；
-2) 输出结构必须包含三段：结论、关键依据、引用编号；
-3) 证据块已按 [1]、[2]… 编号；回答正文中引用时使用相同编号，如「……[1][2]」；
-4) 不允许无引用硬答；
-5) 若证据不足或问题超出证据范围，请只输出一行：拒答：<简短原因>（不要输出其它段落）；
-6) 若能回答，不要用「拒答：」句式；
-7) 关键依据优先给出可核对数字或事实短句，避免泛泛分析。"""
+    SYSTEM_PROMPT = """你是专业的金融知识助手。根据给定的证据信息回答用户问题。
+
+回答规范：
+1) 优先基于证据给出准确回答，可以适当延伸分析；
+2) 证据已按 [1]、[2]… 编号，回答时引用相应编号；
+3) 如果证据包含相关数字或事实，必须给出回答，禁止拒答；
+4) 关键依据部分给出具体的数字或事实，而非泛泛分析；
+5) 保持回答简洁专业。"""
 
     def __init__(self, model: ModelProvider, temperature: float, max_tokens: int) -> None:
         self.model = model
@@ -59,7 +59,7 @@ class GroundedGenerator:
                 reason="no_retrieval_hit",
             )
 
-        # 固化证据选取：仅对选中的证据生成回答与引用，减少“有命中但引用弱关联”。
+        # 固化证据选取：仅对选中的证据生成回答与引用，减少"有命中但引用弱关联"。
         evidence_hits = select_evidence_hits(
             question=question,
             hits=hits,
@@ -124,25 +124,10 @@ class GroundedGenerator:
         if not text:
             return "拒答：证据不足，无法给出可靠结论。", True, "insufficient_evidence"
         if self._looks_like_insufficient(text):
-            # 模型可能会在“证据看起来足够”时也直接拒答；此处用 evidence anchor coverage 进行降级兜底，
-            # 避免 false refusal（证据可答但被硬拒答）。
-            if self.strict_policy and hits:
-                evidence_cov, _ = evaluate_anchor_coverage(
-                    question=question,
-                    answer=question,  # 让 anchor 集与问题锚点一致
-                    hits=hits,
-                )
-                if evidence_cov >= self.cautious_coverage_threshold:
-                    cautious = self._cautious_template(
-                        question=question, hits=hits, citation_ids=citation_ids
-                    )
-                    if cautious.startswith(("拒答：", "拒答:")):
-                        return cautious, True, "insufficient_evidence"
-                    return cautious, False, ""
             first_line = text.split("\n", 1)[0].strip()
             normalized = text
             if not normalized.startswith(("拒答：", "拒答:")):
-                normalized = f"拒答：{first_line or '证据不足，无法给出可靠结论。'}"
+                normalized = "拒答：" + (first_line or "证据不足，无法给出可靠结论。")
             return normalized, True, "insufficient_evidence"
         # 去掉可选的文末「引用：」行，避免与 citations 重复堆叠
         cleaned = self._REF_LINE_RE.sub("", text).strip()
@@ -157,7 +142,7 @@ class GroundedGenerator:
         if not contains_citation_marker(structured) or not citations_are_valid(structured, len(hits)):
             return "拒答：回答缺少有效引用编号，无法保证可追溯性。", True, "citation_missing"
 
-        # 2) 锚点覆盖校验（防“有引用但不对题”）
+        # 2) 锚点覆盖校验（防"有引用但不对题"）
         coverage, detail = evaluate_anchor_coverage(question=question, answer=structured, hits=hits)
         if coverage < self.refuse_coverage_threshold:
             return (

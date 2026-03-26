@@ -28,21 +28,18 @@ SYSTEM_PROMPT = """你是一个可调用工具的助手。
 你有以下长期上下文（记忆与技能）：
 {long_context}
 
-【工具调用硬性协议（非常重要）】
-1) 只要你决定“需要调用工具”，你必须输出且只能输出一行 JSON，对象格式固定为：
-   {{"tool":"工具名","input":"传给工具的字符串参数"}}
-2) 工具调用时：禁止输出任何解释、前后缀、Markdown、代码块、标签（例如“[工具] …”）、多余空行。
-   - 错误示例（不要这样）：我将调用工具… {{"tool":"get_time","input":""}}
-   - 错误示例（不要这样）：[工具] get_time()
-3) 只有当你不需要调用工具时，才输出自然语言答案（此时不要输出 JSON）。
+【工具调用协议】
+当你需要调用工具时，必须输出且只能输出一行纯 JSON，格式如下：
+{"tool":"工具名","input":"参数"}
 
-【少样例】
-- 用户：现在几点？
-  你：{{"tool":"get_time","input":""}}
-- 用户：读取记忆
-  你：{{"tool":"read_memory","input":""}}
-- 用户：计算 2+3*4
-  你：{{"tool":"calculate","input":"2+3*4"}}
+禁止在 JSON 前后添加任何解释、 Markdown、代码块或标点符号。
+
+【示例】
+用户：现在几点？ → 输出：{"tool":"get_time","input":""}
+用户：读取记忆 → 输出：{"tool":"read_memory","input":""}
+用户：计算 2+3*4 → 输出：{"tool":"calculate","input":"2+3*4"}
+用户：搜索知识库 关于公司财务数据 → 输出：{"tool":"search_knowledge_base","input":"公司 财务数据"}
+用户：今天天气如何？ → 输出：{"tool":"web_search","input":"今天天气"}
 """
 
 
@@ -93,7 +90,7 @@ _TOOL_CALL_FALLBACK_RE = re.compile(
 def _try_parse_tool_call_fallback(text: str) -> dict[str, str] | None:
     """兜底解析：兼容模型输出 `[工具] get_time()` 这类非 JSON 格式。
 
-    仅在整条输出“看起来像一次工具调用”时触发，避免误判普通文本。
+    仅在整条输出"看起来像一次工具调用"时触发，避免误判普通文本。
     """
     s = (text or "").strip()
     if not s:

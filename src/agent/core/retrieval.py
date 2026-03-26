@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
 from collections import defaultdict
+from pathlib import Path
 
 from .schemas import DocumentChunk, RetrievalHit
 
@@ -50,6 +52,7 @@ class InMemoryHybridRetriever:
         tfidf_weight: float = 0.25,
         embedding_weight: float = 0.40,
         embedding_top_k: int = 12,
+        index_dir: Path | None = None,
     ) -> None:
         sparse_mode = os.getenv("SPARSE_MODE", "tfidf").strip().lower()
         if sparse_mode not in {"tfidf", "bm25", "tfidf_bm25"}:
@@ -69,6 +72,7 @@ class InMemoryHybridRetriever:
         self._bm25_k1 = float(os.getenv("BM25_K1", "1.5"))
         self._bm25_b = float(os.getenv("BM25_B", "0.75"))
         self._tfidf_bm25_alpha = float(os.getenv("TFIDF_BM25_ALPHA", "0.5"))
+        self._index_dir: Path | None = index_dir
 
     def upsert_chunks(self, chunks: list[DocumentChunk]) -> None:
         embedding_inputs: list[str] = []
@@ -100,6 +104,8 @@ class InMemoryHybridRetriever:
         return hits
 
     def search_with_debug(self, query: str, top_k: int = 5) -> tuple[list[RetrievalHit], dict[str, object]]:
+        # 惰性加载 embeddings（首次搜索时触发）
+        self.ensure_embeddings_loaded()
         if not query.strip() or not self._chunks:
             return [], {
                 "query_tokens": [],
@@ -335,4 +341,102 @@ class InMemoryHybridRetriever:
         if q_norm == 0 or d_norm == 0:
             return 0.0
         return numerator / (q_norm * d_norm)
+
+    def save_index(self, index_dir: Path) -> None:
+        """持久化检索索引到磁盘（含 embeddings）"""
+        index_dir = Path(index_dir)
+        index_dir.mkdir(parents=True, exist_ok=True)
+
+        # 保存 chunks
+        chunks_data = [
+            {
+                "chunk_id": c.chunk_id,
+                "doc_id": c.doc_id,
+                "text": c.text,
+                "source": c.source,
+                "metadata": c.metadata,
+            }
+            for c in self._chunks.values()
+        ]
+        (index_dir / "chunks.json").write_text(
+            json.dumps(chunks_data, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        # 保存词频统计
+        term_data = {
+            "doc_freq": dict(self._doc_freq),
+            "chunk_terms": self._chunk_terms,
+            "chunk_lengths": self._chunk_lengths,
+        }
+        (index_dir / "terms.json").write_text(
+            json.dumps(term_data, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        # 保存 embeddings（若已有计算结果）
+        if self._chunk_embeddings:
+            (index_dir / "embeddings.json").write_text(
+                json.dumps(self._chunk_embeddings, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+    def load_index(self, index_dir: Path) -> bool:
+        """从磁盘加载检索索引，返回是否成功"""
+        index_dir = Path(index_dir)
+        chunks_file = index_dir / "chunks.json"
+        terms_file = index_dir / "terms.json"
+
+        if not chunks_file.exists() or not terms_file.exists():
+            return False
+
+        try:
+            chunks_data = json.loads(chunks_file.read_text(encoding="utf-8"))
+            self._chunks = {
+                c["chunk_id"]: DocumentChunk(
+                    chunk_id=c["chunk_id"],
+                    doc_id=c["doc_id"],
+                    text=c["text"],
+                    source=c["source"],
+                    metadata=c.get("metadata", {}),
+                )
+                for c in chunks_data
+            }
+
+            term_data = json.loads(terms_file.read_text(encoding="utf-8"))
+            self._doc_freq = defaultdict(int, term_data.get("doc_freq", {}))
+            self._chunk_terms = term_data.get("chunk_terms", {})
+            self._chunk_lengths = term_data.get("chunk_lengths", {})
+
+            # 尝试加载 embeddings（若文件不存在，后续 ensure_embeddings_loaded 会惰性计算）
+            embeddings_file = index_dir / "embeddings.json"
+            if embeddings_file.exists():
+                try:
+                    embeddings_data = json.loads(embeddings_file.read_text(encoding="utf-8"))
+                    # JSON 的 list 值在反序列化后已是 list，无需转换
+                    self._chunk_embeddings = embeddings_data
+                except (json.JSONDecodeError, ValueError):
+                    self._chunk_embeddings.clear()
+
+            return True
+        except (json.JSONDecodeError, KeyError):
+            return False
+
+    def ensure_embeddings_loaded(self) -> None:
+        """确保 embeddings 已加载（惰性计算），首次计算后自动持久化到磁盘"""
+        if self._chunk_embeddings or not self._embedding_provider or not self._chunks:
+            return
+        try:
+            texts = [c.text for c in self._chunks.values()]
+            chunk_ids = list(self._chunks.keys())
+            vectors = self._embedding_provider.embed_texts(texts)
+            self._chunk_embeddings.clear()
+            for idx, chunk_id in enumerate(chunk_ids):
+                if idx < len(vectors):
+                    self._chunk_embeddings[chunk_id] = vectors[idx]
+            # 首次计算后自动持久化
+            if self._index_dir and self._chunk_embeddings:
+                self.save_index(self._index_dir)
+        except Exception:
+            self._chunk_embeddings.clear()
 

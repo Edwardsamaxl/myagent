@@ -17,13 +17,14 @@ from agent.web import create_app
 
 
 def main() -> None:
-    load_dotenv()
+    # 强制从项目 .env 加载，忽略系统环境变量
+    load_dotenv(dotenv_path=str(CURRENT_DIR / ".env"), override=True)
     config = AgentConfig.from_env()
     app = create_app(config)
     print("Mini Agent Web UI 已启动。")
     print(f"访问地址: http://{config.web_host}:{config.web_port}")
     print(f"当前模型: {config.model_provider}/{config.model_name}")
-    app.run(host=config.web_host, port=config.web_port, debug=False)
+    app.run(host=config.web_host, port=config.web_port, debug=False, load_dotenv=False)
 
 
 if __name__ == "__main__":

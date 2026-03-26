@@ -45,6 +45,13 @@ class RagAgentService:
         self.eval_store = EvaluationStore(config.eval_records_file)
         self.trace_logger = TraceLogger(config.trace_file)
 
+        # 持久化：尝试加载已有索引
+        index_dir = config.data_dir / "retrieval_index"
+        self._index_dir = index_dir
+        # 传入 index_dir 以便 ensure_embeddings_loaded 后自动持久化
+        self.retriever._index_dir = index_dir
+        self.retriever.load_index(index_dir)
+
     def update_model(self, model: ModelProvider) -> None:
         self.generator = GroundedGenerator(
             model=model,
@@ -95,6 +102,8 @@ class RagAgentService:
             dedup_across_docs=dedup_across_docs,
         )
         self.retriever.upsert_chunks(chunks)
+        # 持久化索引
+        self.retriever.save_index(self._index_dir)
         self.trace_logger.log(
             TraceEvent(
                 trace_id=trace_id,

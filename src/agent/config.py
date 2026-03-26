@@ -12,6 +12,8 @@ class AgentConfig:
     ollama_base_url: str
     openai_base_url: str
     openai_api_key: str
+    anthropic_base_url: str
+    anthropic_api_key: str
     max_steps: int
     temperature: float
     max_tokens: int
@@ -48,11 +50,13 @@ class AgentConfig:
         trace_file = data_dir / "traces.jsonl"
         eval_records_file = data_dir / "eval_records.jsonl"
         return cls(
-            model_provider=os.getenv("MODEL_PROVIDER", "ollama").strip(),
-            model_name=os.getenv("MODEL_NAME", "qwen2.5:7b").strip(),
+            model_provider=os.getenv("MODEL_PROVIDER", "anthropic_compatible").strip(),
+            model_name=os.getenv("MODEL_NAME", "MiniMax-M2.7").strip(),
             ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip(),
             openai_base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com").strip(),
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
+            anthropic_api_key=os.getenv("ANTHROPIC_AUTH_TOKEN", "").strip(),
+            anthropic_base_url=os.getenv("ANTHROPIC_BASE_URL", "https://api.minimaxi.com/anthropic").strip(),
             max_steps=int(os.getenv("MAX_STEPS", "6")),
             temperature=float(os.getenv("TEMPERATURE", "0.2")),
             max_tokens=int(os.getenv("MAX_TOKENS", "768")),
