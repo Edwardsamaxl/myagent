@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,36 @@ import requests
 
 from ..core.memory_store import MemoryStore
 from ..core.skill_store import SkillStore
+
+# 引用合规预检使用的锚点提取与覆盖率评估（与 generation.py 共用同一套阈值配置）
+_ANCHOR_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z]{2,}|\d+(?:\.\d+)?%?")
+_STOPWORDS = {
+    "公司", "多少", "什么", "如何", "是否", "以及", "这个", "那个", "根据", "报告", "数据", "其中",
+}
+_REFUSE_COVERAGE_THRESHOLD = float(os.getenv("AGENT_REFUSE_COVERAGE_THRESHOLD", "0.10"))
+
+
+def _extract_anchor_tokens(text: str) -> list[str]:
+    """提取文本中的关键锚点 tokens（数字/年份/百分比/关键实体）。"""
+    tokens: list[str] = []
+    for m in _ANCHOR_TOKEN_RE.finditer(text):
+        token = m.group(0).strip()
+        if len(token) <= 1:
+            continue
+        if token in _STOPWORDS:
+            continue
+        tokens.append(token)
+    return tokens
+
+
+def _evaluate_query_coverage(question: str, hit_texts: list[str]) -> tuple[float, dict[str, int]]:
+    """计算问题锚点在证据文本列表中的覆盖率（与 generation.py 的 evaluate_anchor_coverage 同源）。"""
+    evidence_text = "\n".join(hit_texts).lower()
+    q_anchors = _extract_anchor_tokens(question)
+    if not q_anchors:
+        return 1.0, {"anchors": 0, "covered": 0}
+    covered = sum(1 for token in q_anchors if token.lower() in evidence_text)
+    return covered / len(q_anchors), {"anchors": len(q_anchors), "covered": covered}
 
 
 ToolFunc = Callable[[str], str]
@@ -72,7 +103,11 @@ def _safe_path(path_value: str, workspace_dir: Path) -> Path:
 
 
 def create_rag_tool(rag_service: Any) -> Tool:
-    """创建知识库检索工具，让 Agent 自主决定何时检索。"""
+    """创建知识库检索工具，让 Agent 自主决定何时检索。
+
+    引用合规预检：当返回的证据覆盖度低于阈值时，在结果中附加 __refuse__ 标志，
+    由 SimpleAgent 工具循环据此决定是否信任该证据（与 /api/rag 路径的 GroundedGenerator 拒答逻辑一致）。
+    """
 
     def search_knowledge_base(query: str) -> str:
         if not query.strip():
@@ -83,6 +118,16 @@ def create_rag_tool(rag_service: Any) -> Tool:
             if not hits:
                 return "检索结果为空，无法找到相关信息。"
 
+            # --- 引用合规预检：计算 query 对 hits 的覆盖率 ---
+            hit_texts = [hit.get("text_preview") or hit.get("text", "") for hit in hits]
+            coverage, detail = _evaluate_query_coverage(query, hit_texts)
+            refuse_flag = ""
+            if coverage < _REFUSE_COVERAGE_THRESHOLD:
+                refuse_flag = (
+                    f"\n\n[引用合规警告] 证据覆盖度不足（{detail['covered']}/{detail['anchors']}），"
+                    "低质量证据已标记。\n__refuse__"
+                )
+
             lines = []
             for i, hit in enumerate(hits[:5], 1):
                 preview = (hit.get("text_preview") or hit.get("text", ""))[:300]
@@ -91,7 +136,7 @@ def create_rag_tool(rag_service: Any) -> Tool:
                 lines.append(f"[{i}] 来源: {source} (相关度: {score:.2f})")
                 lines.append(f"内容: {preview}")
                 lines.append("")
-            return "\n".join(lines)
+            return "\n".join(lines) + refuse_flag
         except Exception as exc:  # noqa: BLE001
             return f"检索失败: {exc}"
 

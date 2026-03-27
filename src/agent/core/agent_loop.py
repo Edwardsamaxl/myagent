@@ -175,6 +175,17 @@ class SimpleAgent:
                     tool_result = tool.func(str(tool_input))
                 except Exception as exc:  # noqa: BLE001
                     tool_result = f"工具执行异常: {exc}"
+
+            # 引用合规预检标志处理：低质量证据告知 SimpleAgent 降低置信度
+            if "__refuse__" in str(tool_result):
+                tool_result_warned = (
+                    str(tool_result)
+                    .replace("__refuse__", "")
+                    + "\n\n[系统提示] 上述检索结果存在引用合规问题，证据覆盖度不足。"
+                    "请谨慎使用，必要时可拒绝基于该证据回答。"
+                )
+                tool_result = tool_result_warned
+
             tool_calls.append(f"{tool_name}({tool_input})")
 
             messages.append({"role": "assistant", "content": model_text})
