@@ -50,6 +50,17 @@ function getStorage(key, def) {
 }
 function setStorage(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 
+// Escape HTML (for trusted static strings only — prefer textContent where possible)
+function escapeHtml(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Render chat list
 function renderChatList() {
   chatListEl.innerHTML = '';
@@ -77,11 +88,30 @@ function renderChatList() {
     var title = titles[s.id] || "新对话";
     var item = document.createElement('div');
     item.className = 'chat-list-item' + (s.id === currentSessionId ? ' active' : '');
-    item.innerHTML = '<span class="chat-title">' + escapeHtml(title) + '</span>' +
-      '<div class="chat-actions">' +
-      '<button class="action-btn" onclick="event.stopPropagation(); renameChat(\'' + s.id + '\')">✎</button>' +
-      '<button class="action-btn" onclick="event.stopPropagation(); deleteChat(\'' + s.id + '\')">×</button>' +
-      '</div>';
+
+    var titleSpan = document.createElement('span');
+    titleSpan.className = 'chat-title';
+    titleSpan.textContent = title; // XSS safe
+
+    var actionsDiv = document.createElement('div');
+    actionsDiv.className = 'chat-actions';
+
+    var renameBtn = document.createElement('button');
+    renameBtn.className = 'action-btn';
+    renameBtn.setAttribute('aria-label', '重命名对话');
+    renameBtn.textContent = '✎';
+    renameBtn.onclick = function(e) { e.stopPropagation(); renameChat(s.id); };
+
+    var deleteBtn = document.createElement('button');
+    deleteBtn.className = 'action-btn';
+    deleteBtn.setAttribute('aria-label', '删除对话');
+    deleteBtn.textContent = '×';
+    deleteBtn.onclick = function(e) { e.stopPropagation(); deleteChat(s.id); };
+
+    actionsDiv.appendChild(renameBtn);
+    actionsDiv.appendChild(deleteBtn);
+    item.appendChild(titleSpan);
+    item.appendChild(actionsDiv);
     item.onclick = function() { selectChat(s.id); };
     chatListEl.appendChild(item);
   });
@@ -95,6 +125,7 @@ async function selectChat(id) {
   chatTitleEl.textContent = titles[id] || "新对话";
   await loadHistory(id);
   renderChatList();
+  closeSidebarMobile();
 }
 
 // Load history
@@ -138,6 +169,7 @@ async function newChat() {
   } catch(e) {}
   await refreshSessions();
   renderChatList();
+  closeSidebarMobile();
 }
 
 // Rename chat
@@ -176,20 +208,76 @@ async function deleteChat(id) {
   renderChatList();
 }
 
-// Add message to UI
+// Add message to UI (XSS safe — uses textContent)
 function addMessage(role, content, time) {
   var time = time || new Date().toLocaleTimeString('zh-CN', {hour: '2-digit', minute:'2-digit'});
   var msgEl = document.createElement('div');
   msgEl.className = 'message ' + role;
-  msgEl.innerHTML =
-    '<div class="message-avatar"></div>' +
-    '<div class="message-content">' +
-    '<div class="bubble">' + escapeHtml(content) + '</div>' +
-    '<div class="message-time">' + time + '</div>' +
-    '</div>';
+  msgEl.setAttribute('role', 'article');
+
+  var avatarEl = document.createElement('div');
+  avatarEl.className = 'message-avatar';
+
+  var contentEl = document.createElement('div');
+  contentEl.className = 'message-content';
+
+  var bubbleEl = document.createElement('div');
+  bubbleEl.className = 'bubble';
+  bubbleEl.textContent = content; // XSS safe
+
+  var timeEl = document.createElement('div');
+  timeEl.className = 'message-time';
+  timeEl.textContent = time;
+
+  contentEl.appendChild(bubbleEl);
+  contentEl.appendChild(timeEl);
+  msgEl.appendChild(avatarEl);
+  msgEl.appendChild(contentEl);
   messagesEl.appendChild(msgEl);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return msgEl;
+}
+
+// Streaming message — appends text incrementally
+function addStreamingMessage() {
+  var msgEl = document.createElement('div');
+  msgEl.className = 'message assistant streaming-msg';
+  msgEl.setAttribute('role', 'article');
+
+  var avatarEl = document.createElement('div');
+  avatarEl.className = 'message-avatar';
+
+  var contentEl = document.createElement('div');
+  contentEl.className = 'message-content';
+
+  var bubbleEl = document.createElement('div');
+  bubbleEl.className = 'bubble';
+  bubbleEl.textContent = '';
+
+  var cursor = document.createElement('span');
+  cursor.className = 'stream-cursor';
+  cursor.setAttribute('aria-hidden', 'true');
+  bubbleEl.appendChild(cursor);
+
+  contentEl.appendChild(bubbleEl);
+  msgEl.appendChild(avatarEl);
+  msgEl.appendChild(contentEl);
+  messagesEl.appendChild(msgEl);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return { msgEl, bubbleEl, cursor };
+}
+
+function appendStreamingText(bubbleEl, text) {
+  // Remove cursor, append text, re-add cursor
+  var cursor = bubbleEl.querySelector('.stream-cursor');
+  bubbleEl.textContent = text;
+  bubbleEl.appendChild(cursor);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function finalizeStreamingMessage(msgEl) {
+  var cursor = msgEl.querySelector('.stream-cursor');
+  if (cursor) cursor.remove();
 }
 
 // Add thinking indicator
@@ -215,19 +303,7 @@ function removeThinking() {
   if (el) el.remove();
 }
 
-// Escape HTML
-function escapeHtml(text) {
-  if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;')
-    .replace(/\n/g, '<br>');
-}
-
-// Send message
+// Send message (with SSE streaming)
 async function sendMessage() {
   var text = inputEl.value.trim();
   if (!text || isStreaming) return;
@@ -236,21 +312,65 @@ async function sendMessage() {
 
   inputEl.value = '';
   addMessage('user', text);
-  var thinkingEl = addThinking();
+  isStreaming = true;
+  document.getElementById('btnSend').disabled = true;
+
+  var streamingData = addStreamingMessage();
 
   try {
-    var res = await api('/api/chat', 'POST', {
-      session_id: currentSessionId,
-      message: text,
-      use_rag: true
+    const response = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: currentSessionId,
+        message: text,
+        use_rag: true
+      })
     });
 
-    removeThinking();
+    if (!response.ok) {
+      const errText = await response.text();
+      let errMsg = '请求失败';
+      try {
+        const j = JSON.parse(errText);
+        if (j && j.error) errMsg = j.error;
+      } catch (_) {}
+      throw new Error(errMsg);
+    }
 
-    if (res.answer) {
-      addMessage('assistant', res.answer);
-    } else if (res.error) {
-      addMessage('assistant', '错误: ' + res.error, new Date().toLocaleTimeString());
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    var fullText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      // SSE format: data: {"answer": "..."}\n\n
+      const lines = chunk.split('\n');
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line.startsWith('data:')) continue;
+        var dataStr = line.slice(5).trim();
+        if (!dataStr || dataStr === '[DONE]') continue;
+        try {
+          var data = JSON.parse(dataStr);
+          if (data.text) {
+            fullText += data.text;
+            appendStreamingText(streamingData.bubbleEl, fullText);
+          }
+          if (data.error) {
+            finalizeStreamingMessage(streamingData.msgEl);
+            streamingData.bubbleEl.textContent = '错误: ' + data.error;
+            return;
+          }
+        } catch (_) {}
+      }
+    }
+
+    finalizeStreamingMessage(streamingData.msgEl);
+    if (!fullText) {
+      streamingData.bubbleEl.textContent = '未收到回复';
     }
 
     // Update title if new
@@ -264,8 +384,11 @@ async function sendMessage() {
 
     await refreshSessions();
   } catch(e) {
-    removeThinking();
-    addMessage('error', '请求失败: ' + e.message);
+    finalizeStreamingMessage(streamingData.msgEl);
+    streamingData.bubbleEl.textContent = '请求失败: ' + e.message;
+  } finally {
+    isStreaming = false;
+    document.getElementById('btnSend').disabled = false;
   }
 }
 
@@ -307,6 +430,47 @@ function applyModelState(s) {
   modelBadgeEl.textContent = s.model_name || '未设置';
 }
 
+// --- Focus trap for modal ---
+function trapFocus(el) {
+  var focusable = el.querySelectorAll(
+    'button, input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  if (!focusable.length) return;
+  var first = focusable[0];
+  var last = focusable[focusable.length - 1];
+
+  el.addEventListener('keydown', function handler(e) {
+    if (e.key !== 'Tab') return;
+    if (e.shiftKey) {
+      if (document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      }
+    } else {
+      if (document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  });
+}
+
+// --- Mobile sidebar ---
+function openSidebarMobile() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarOverlay').classList.add('show');
+  document.getElementById('btnHamburger').setAttribute('aria-expanded', 'true');
+  // Focus first sidebar item
+  var first = document.querySelector('.chat-list-item');
+  if (first) first.focus();
+}
+
+function closeSidebarMobile() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('show');
+  document.getElementById('btnHamburger').setAttribute('aria-expanded', 'false');
+}
+
 // Init
 async function init() {
   // Load sessions
@@ -331,6 +495,49 @@ async function init() {
   }
 
   renderChatList();
+
+  // Setup focus trap on modal
+  var modal = document.getElementById('modelModal');
+  trapFocus(modal);
+
+  // Open modal with focus trap
+  document.getElementById('btnOpenModel').onclick = async function() {
+    try {
+      var state = await api('/api/state', 'GET');
+      applyModelState(state);
+    } catch(e) {}
+    document.getElementById('modelModal').classList.add('show');
+    // Focus first focusable element
+    var firstFocusable = modal.querySelector('button, input, select');
+    if (firstFocusable) firstFocusable.focus();
+  };
+
+  document.getElementById('btnCancelModel').onclick = function() {
+    document.getElementById('modelModal').classList.remove('show');
+    document.getElementById('btnOpenModel').focus();
+  };
+
+  document.getElementById('btnSaveModel').onclick = async function() {
+    var provider = document.getElementById('provider').value;
+    var modelName = document.getElementById('modelName').value.trim();
+    try {
+      await api('/api/model', 'POST', {provider, model_name: modelName});
+      var state = await api('/api/state', 'GET');
+      applyModelState(state);
+      document.getElementById('modelModal').classList.remove('show');
+      addMessage('system', '模型已更新为 ' + provider + ' / ' + modelName);
+      document.getElementById('btnOpenModel').focus();
+    } catch(e) {
+      alert('更新失败: ' + e.message);
+    }
+  };
+
+  document.getElementById('modelModal').onclick = function(e) {
+    if (e.target === this) {
+      this.classList.remove('show');
+      document.getElementById('btnOpenModel').focus();
+    }
+  };
 }
 
 // Event listeners
@@ -345,33 +552,34 @@ document.getElementById('input').onkeydown = function(e) {
 
 searchInputEl.oninput = renderChatList;
 
-// Model modal
-document.getElementById('btnOpenModel').onclick = async function() {
-  try {
-    var state = await api('/api/state', 'GET');
-    applyModelState(state);
-  } catch(e) {}
-  document.getElementById('modelModal').classList.add('show');
-};
-document.getElementById('btnCancelModel').onclick = function() {
-  document.getElementById('modelModal').classList.remove('show');
-};
-document.getElementById('btnSaveModel').onclick = async function() {
-  var provider = document.getElementById('provider').value;
-  var modelName = document.getElementById('modelName').value.trim();
-  try {
-    await api('/api/model', 'POST', {provider, model_name: modelName});
-    var state = await api('/api/state', 'GET');
-    applyModelState(state);
-    document.getElementById('modelModal').classList.remove('show');
-    addMessage('system', '模型已更新为 ' + provider + ' / ' + modelName);
-  } catch(e) {
-    alert('更新失败: ' + e.message);
+// Mobile sidebar events
+document.getElementById('btnHamburger').onclick = openSidebarMobile;
+document.getElementById('sidebarOverlay').onclick = closeSidebarMobile;
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+  // Esc to close modal or sidebar
+  if (e.key === 'Escape') {
+    var modal = document.getElementById('modelModal');
+    if (modal.classList.contains('show')) {
+      modal.classList.remove('show');
+      document.getElementById('btnOpenModel').focus();
+    } else {
+      closeSidebarMobile();
+    }
   }
-};
-document.getElementById('modelModal').onclick = function(e) {
-  if (e.target === this) this.classList.remove('show');
-};
+  // "/" to focus search (when not in input)
+  if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+    e.preventDefault();
+    searchInputEl.focus();
+  }
+});
+
+// Auto-resize textarea
+inputEl.addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 200) + 'px';
+});
 
 // Start
 init();

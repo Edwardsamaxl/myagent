@@ -201,6 +201,71 @@ def create_app(config: AgentConfig | None = None) -> Flask:
         except requests.RequestException as exc:
             return _json_error(str(exc), "chat_upstream", 502)
 
+    @app.post("/api/chat/stream")
+    def chat_stream():
+        """SSE 流式聊天接口。"""
+        payload, err = _read_json_object()
+        if err:
+            return err
+        message = str(payload.get("message", "")).strip()
+        session_id = str(payload.get("session_id", "default")).strip() or "default"
+        if not message:
+            return _json_error("message 不能为空", "validation_error")
+
+        use_rag: bool | None = None
+        if "use_rag" in payload:
+            v = payload.get("use_rag")
+            if isinstance(v, bool):
+                use_rag = v
+            elif isinstance(v, str):
+                s = v.strip().lower()
+                if s in {"1", "true", "yes", "y", "on"}:
+                    use_rag = True
+                elif s in {"0", "false", "no", "n", "off", ""}:
+                    use_rag = False
+                else:
+                    return _json_error("use_rag 必须是布尔值", "validation_error")
+            elif isinstance(v, int) and not isinstance(v, bool):
+                use_rag = bool(v)
+            elif v is None:
+                use_rag = None
+            else:
+                return _json_error("use_rag 必须是布尔值", "validation_error")
+
+        def generate():
+            try:
+                result = service.chat(session_id=session_id, user_message=message, use_rag=use_rag)
+                answer = result.get("answer", "")
+                if not answer:
+                    yield "data: {\"text\":\"\"}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+                # Stream word by word for visual feedback
+                words = answer.split("")
+                for i, ch in enumerate(words):
+                    chunk = answer[:i+1]
+                    import json as _json
+                    yield f"data: {_json.dumps({'text': ch, 'done': False})}\n\n"
+                yield "data: [DONE]\n\n"
+            except ValueError as exc:
+                import json as _json
+                yield f"data: {_json.dumps({'error': str(exc)})}\n\n"
+            except requests.RequestException as exc:
+                import json as _json
+                yield f"data: {_json.dumps({'error': str(exc)})}\n\n"
+            except Exception as exc:
+                import json as _json
+                yield f"data: {_json.dumps({'error': '服务内部错误'})}\n\n"
+
+        return Response(
+            generate(),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
     @app.post("/api/model")
     def update_model():
         payload, err = _read_json_object()

@@ -321,6 +321,24 @@ html, body {
   text-align: left;
   max-width: 100%;
   word-break: break-word;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* Streaming cursor */
+.bubble .stream-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--accent);
+  margin-left: 1px;
+  animation: blink 0.8s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 .message.assistant .bubble {
@@ -547,9 +565,51 @@ html, body {
   background: var(--accent-hover);
 }
 
-/* Responsive */
+/* Responsive / Mobile Drawer */
 @media (max-width: 768px) {
   .sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    width: 280px;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 199;
+  }
+
+  .sidebar-overlay.show {
+    display: block;
+  }
+
+  /* Mobile header with hamburger */
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+    gap: 12px;
+  }
+
+  .hamburger-btn {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: var(--text-primary);
+    padding: 4px;
     display: none;
   }
 
@@ -559,5 +619,24 @@ html, body {
 
   .composer {
     padding: 12px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  /* Touch targets */
+  .send-btn,
+  .action-btn,
+  .new-chat-btn,
+  .settings-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (min-width: 769px) {
+  .sidebar-overlay {
+    display: none !important;
+  }
+  .hamburger-btn {
+    display: none !important;
   }
 }
