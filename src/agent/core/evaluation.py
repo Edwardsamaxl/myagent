@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
+import logging
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .schemas import EvalRecord
+
+logger = logging.getLogger(__name__)
 
 # 在线 / 离线聚合共用同一套键名（口径统一）
 METRIC_TOTAL_REQUESTS = "total_requests"
@@ -80,4 +83,203 @@ class EvaluationStore:
     def summary(self) -> dict[str, float | int | None]:
         rows = load_eval_rows_from_jsonl(self.file_path)
         return aggregate_eval_rows(rows)
+
+
+# ---------------------------------------------------------------------------
+# RAG 评估指标体系
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RetrievalEvalRecord:
+    """单条检索评估记录（离线批评估使用）。"""
+    query: str
+    expected_answers: list[str]
+    retrieval_hits: list[str]
+    hit_ids: list[str] = field(default_factory=list)
+
+
+@dataclass
+class GenerationEvalRecord:
+    """单条生成评估记录（离线批评估使用）。"""
+    query: str
+    evidence: list[str]
+    generated_answer: str
+    expected_answer: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# 检索指标计算
+# ---------------------------------------------------------------------------
+
+def recall_at_k(
+    hits: list[str],
+    expected_answers: list[str],
+    k: int,
+) -> float:
+    """Recall@K：Top-K 检索结果中包含正确答案的比例。
+
+    判断"包含"：expected_answer 子串是否出现在 hit 文本中。
+    """
+    top_k_hits = hits[:k]
+    if not expected_answers:
+        return 0.0
+    matched = 0
+    for expected in expected_answers:
+        expected_clean = expected.strip()
+        if not expected_clean:
+            continue
+        for hit in top_k_hits:
+            if expected_clean in hit:
+                matched += 1
+                break
+    return matched / len(expected_answers)
+
+
+def hit_rate_at_k(
+    hits: list[str],
+    expected_answers: list[str],
+    k: int,
+) -> float:
+    """HitRate@K：Top-K 中是否存在任意一个命中文档（0 或 1）。"""
+    top_k_hits = hits[:k]
+    for expected in expected_answers:
+        expected_clean = expected.strip()
+        if not expected_clean:
+            continue
+        for hit in top_k_hits:
+            if expected_clean in hit:
+                return 1.0
+    return 0.0
+
+
+def mean_reciprocal_rank(
+    hits: list[str],
+    expected_answers: list[str],
+) -> float:
+    """MRR：第一个命中的位置权重，1/rank；无命中则 0。"""
+    for rank, hit in enumerate(hits, start=1):
+        for expected in expected_answers:
+            if expected.strip() and expected.strip() in hit:
+                return 1.0 / rank
+    return 0.0
+
+
+# ---------------------------------------------------------------------------
+# 生成指标评估（LLM-based）
+# ---------------------------------------------------------------------------
+
+class GroundednessEvaluator:
+    """基于 LLM 的 Groundedness 评估。
+
+    判断生成回答中有多少比例的内容能被证据支持。
+    实现：prompt 让 LLM 判断每个关键陈述是否在 evidence 中有依据，
+    返回 0~1 分。
+    """
+
+    SYSTEM_PROMPT = (
+        "你是一个评估助手。请判断【回答】中的每个关键陈述是否能在【证据】中找到对应依据。\n"
+        "如果回答中大部分关键内容都能在证据中找到依据，返回分数接近 1.0；"
+        "如果大量内容是幻觉或无法从证据得出，分数接近 0.0。\n"
+        "最终返回一个 0~1 的分数，只输出数字，不要解释。"
+    )
+
+    USER_PROMPT = "【证据】\n{evidence}\n\n【回答】\n{answer}\n\n评分（0~1）："
+
+    def __init__(self, model: Any) -> None:
+        self.model = model
+
+    def evaluate(self, answer: str, evidence: list[str]) -> float:
+        if not answer.strip() or not evidence:
+            return 0.0
+        evidence_text = "\n".join(evidence)
+        messages = [
+            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "user", "content": self.USER_PROMPT.format(evidence=evidence_text, answer=answer)},
+        ]
+        try:
+            response = self.model.generate(
+                messages=messages,
+                temperature=0.0,
+                max_tokens=16,
+            ).strip()
+            # 提取第一个数字
+            import re
+            nums = re.findall(r"0?\.\d+|\d+", response)
+            if nums:
+                score = float(nums[0])
+                return min(max(score, 0.0), 1.0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[GroundednessEvaluator] 评估失败: {exc}")
+        return 0.0
+
+
+class RelevanceEvaluator:
+    """基于 LLM 的 Answer Relevance 评估。
+
+    判断生成回答是否切题（与问题相关）。
+    实现：prompt 让 LLM 评估回答相对于问题的相关程度。
+    """
+
+    SYSTEM_PROMPT = (
+        "你是一个评估助手。请判断【回答】是否充分回答了【问题】。\n"
+        "如果回答精准切题、覆盖问题核心，返回分数接近 1.0；"
+        "如果回答偏离问题、答非所问，分数接近 0.0。\n"
+        "最终返回一个 0~1 的分数，只输出数字，不要解释。"
+    )
+
+    USER_PROMPT = "【问题】\n{question}\n\n【回答】\n{answer}\n\n评分（0~1）："
+
+    def __init__(self, model: Any) -> None:
+        self.model = model
+
+    def evaluate(self, question: str, answer: str) -> float:
+        if not answer.strip():
+            return 0.0
+        messages = [
+            {"role": "system", "content": self.SYSTEM_PROMPT},
+            {"role": "user", "content": self.USER_PROMPT.format(question=question, answer=answer)},
+        ]
+        try:
+            response = self.model.generate(
+                messages=messages,
+                temperature=0.0,
+                max_tokens=16,
+            ).strip()
+            import re
+            nums = re.findall(r"0?\.\d+|\d+", response)
+            if nums:
+                score = float(nums[0])
+                return min(max(score, 0.0), 1.0)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"[RelevanceEvaluator] 评估失败: {exc}")
+        return 0.0
+
+
+# ---------------------------------------------------------------------------
+# 评估数据集加载
+# ---------------------------------------------------------------------------
+
+def load_retrieval_test_set(path: Path) -> list[RetrievalEvalRecord]:
+    """加载检索评估集（支持 jsonl 和 json 格式）。"""
+    if not path.exists():
+        return []
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        return []
+    if path.suffix == ".jsonl":
+        records = [json.loads(ln) for ln in text.splitlines() if ln.strip()]
+    else:
+        records = json.loads(text)
+    result = []
+    for r in records:
+        expected = r.get("expected_answers", [])
+        if isinstance(expected, str):
+            expected = [expected]
+        result.append(RetrievalEvalRecord(
+            query=r.get("question", ""),
+            expected_answers=expected,
+            retrieval_hits=[],  # 填充自 retrieval
+            hit_ids=[],
+        ))
+    return result
 
