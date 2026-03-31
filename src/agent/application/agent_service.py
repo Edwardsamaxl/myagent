@@ -11,6 +11,7 @@ from ..core.dialogue import SessionMetaStore, classify_intent
 from ..core.dialogue.intent_schema import IntentKind
 from ..core.memory_store import MemoryStore
 from ..core.planning import build_turn_plan
+from ..core.planning.langgraph_agent import LangGraphAgent
 from ..core.session_store import SessionStore
 from ..core.skill_store import SkillStore
 from ..llm.providers import build_model_provider, supported_model_providers
@@ -18,7 +19,7 @@ from ..tools.registry import default_tools
 
 
 class AgentService:
-    """组合 RAG 与 SimpleAgent：编排见 `docs/agent-design/rag-bridge.md` 与 `dialogue-planning.md`。
+    """组合 RAG 与 LangGraphAgent：编排见 `docs/agent-design/rag-bridge.md` 与 `dialogue-planning.md`。
 
     - 对话终答**始终**由 `SimpleAgent` 产出；语料型且开启 RAG 时调用 `RagAgentService.answer` 做检索（及同路径内的 grounded 生成），
       但仅将 `retrieval_hits` 格式化为「[检索证据]」注入用户消息，**不把** RAG 返回的 `answer` 当作 `chat` 的最终回复。
@@ -43,7 +44,7 @@ class AgentService:
         self.tools = default_tools(
             self.memory_store, self.skill_store, self.config.workspace_dir, rag_service=self.rag
         )
-        self.agent = SimpleAgent(config=self.config, model=self.model, tools=self.tools)
+        self.agent = LangGraphAgent(config=self.config, model=self.model, tools=self.tools)
 
     def _ensure_dirs(self) -> None:
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +129,7 @@ class AgentService:
         self.config.model_provider = provider
         self.config.model_name = model_name
         self.model = build_model_provider(self.config)
-        self.agent = SimpleAgent(config=self.config, model=self.model, tools=self.tools)
+        self.agent = LangGraphAgent(config=self.config, model=self.model, tools=self.tools)
         self.rag.update_model(self.model)
         return {"provider": self.config.model_provider, "model_name": self.config.model_name}
 

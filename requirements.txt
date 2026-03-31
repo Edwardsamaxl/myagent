@@ -3,3 +3,5 @@ python-dotenv>=1.0.0
 flask>=3.0.0
 pypdf>=4.0.0
 pdfplumber>=0.11.0
+langgraph>=0.2.0
+langgraph-cli[ptb]>=0.2.0
