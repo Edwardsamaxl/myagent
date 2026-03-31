@@ -10,7 +10,7 @@ from ..core.generation import GroundedGenerator
 from ..core.ingestion import DocumentIngestionPipeline
 from ..core.observability import TraceEvent, TraceLogger, TraceStage
 from ..core.retrieval import InMemoryHybridRetriever
-from ..core.rerank import SimpleReranker
+from ..core.rerank import SimpleReranker, build_reranker
 from ..core.schemas import EvalRecord
 from ..llm.embeddings import build_embedding_provider
 from ..llm.providers import ModelProvider
@@ -28,15 +28,42 @@ class RagAgentService:
             chunk_size=config.chunk_size,
             chunk_overlap=config.chunk_overlap,
         )
+
+        # Embedding 健康检查：验证 embedding provider 是否真正可用
+        embedding_provider = build_embedding_provider(config)
+        actual_embedding_weight = config.retrieval_embedding_weight
+        if embedding_provider is not None:
+            try:
+                test_vectors = embedding_provider.embed_texts(["健康检查"])
+                if not test_vectors or not test_vectors[0]:
+                    raise ValueError("Embedding 返回空向量")
+                # 向量维度检查：全零向量是无效的
+                if all(v == 0.0 for v in test_vectors[0]):
+                    raise ValueError("Embedding 向量全零")
+                self._embedding_healthy = True
+            except Exception as exc:  # noqa: BLE001
+                self._embedding_healthy = False
+                actual_embedding_weight = 0.0
+                import logging
+                logging.warning(
+                    f"[RAG] Embedding provider 不可用，降级为纯词频检索。 "
+                    f"原因: {exc}。 "
+                    f"修复建议: 确认 Ollama 已运行 'ollama pull nomic-embed-text'，"
+                    f"或配置 EMBEDDING_PROVIDER=mock 使用 mock 模式。"
+                )
+        else:
+            self._embedding_healthy = False
+            actual_embedding_weight = 0.0
+
         self.retriever = InMemoryHybridRetriever(
-            embedding_provider=build_embedding_provider(config),
+            embedding_provider=embedding_provider if self._embedding_healthy else None,
             fusion_mode=config.retrieval_fusion_mode,
             lexical_weight=config.retrieval_lexical_weight,
             tfidf_weight=config.retrieval_tfidf_weight,
-            embedding_weight=config.retrieval_embedding_weight,
+            embedding_weight=actual_embedding_weight,
             embedding_top_k=config.embedding_top_k,
         )
-        self.reranker = SimpleReranker()
+        self.reranker = build_reranker(config)
         self.generator = GroundedGenerator(
             model=model,
             temperature=config.temperature,

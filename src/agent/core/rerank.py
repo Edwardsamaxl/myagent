@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
+from dataclasses import dataclass
+from typing import Any
 
+import requests
+
+from ..config import AgentConfig
 from .retrieval import _tokenize
 from .schemas import RetrievalHit
+
+logger = logging.getLogger(__name__)
 
 
 class SimpleReranker:
@@ -208,3 +216,146 @@ def _env_bool(name: str, default: bool) -> bool:
     if val is None:
         return default
     return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@dataclass
+class RerankResult:
+    """BGE Reranker 返回的单个重排结果。"""
+    hit: RetrievalHit
+    rerank_score: float
+
+
+class BGEReranker:
+    """基于 Ollama BGE Reranker v2-m3 的文档重排序。
+
+    使用 cross-encoder 架构，将 query + passage 一起编码，
+    输出 0~1 相关度分数，按分数降序排列。
+
+    部署要求：
+        ollama pull BAAI/bge-reranker-v2-m3
+
+    API：POST /api/rerank
+        {
+          "model": "BAAI/bge-reranker-v2-m3",
+          "query": "...",
+          "documents": ["...", "..."]
+        }
+
+    返回：{"results": [{"index": 0, "relevance_score": 0.95}, ...]}
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model: str = "BAAI/bge-reranker-v2-m3",
+        timeout: int = 60,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.timeout = timeout
+        self._healthy = True
+        self._health_checked = False
+
+    def _health_check(self) -> bool:
+        """启动时验证 Ollama rerank API 是否可用。"""
+        if self._health_checked:
+            return self._healthy
+        self._health_checked = True
+        try:
+            # 用最短的 query + 1 个空 doc 验证连通性
+            resp = requests.post(
+                f"{self.base_url}/api/rerank",
+                json={"model": self.model, "query": "健康检查", "documents": ["测试"]},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            self._healthy = True
+        except Exception as exc:
+            self._healthy = False
+            logger.warning(
+                "[BGEReranker] 健康检查失败，将降级为 SimpleReranker。"
+                f"原因: {exc}。"
+                "修复: 确认已运行 'ollama pull BAAI/bge-reranker-v2-m3'。"
+            )
+        return self._healthy
+
+    def rerank(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> list[RetrievalHit]:
+        reranked, _ = self.rerank_with_debug(query=query, hits=hits, top_k=top_k)
+        return reranked
+
+    def rerank_with_debug(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> tuple[list[RetrievalHit], list[dict[str, float | str]]]:
+        if not hits:
+            return [], []
+
+        if not self._health_check():
+            logger.warning("[BGEReranker] 未通过健康检查，降级为 SimpleReranker。")
+            return [], []
+
+        documents = [hit.text for hit in hits]
+
+        try:
+            resp = requests.post(
+                f"{self.base_url}/api/rerank",
+                json={"model": self.model, "query": query, "documents": documents},
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            results: list[dict[str, Any]] = resp.json().get("results", [])
+        except requests.RequestException as exc:
+            logger.warning(f"[BGEReranker] API 调用失败: {exc}，跳过重排。")
+            return hits, []
+
+        # 构建 index → score 映射
+        score_map: dict[int, float] = {}
+        for item in results:
+            idx = item.get("index", -1)
+            score = item.get("relevance_score", 0.0)
+            if 0 <= idx < len(hits):
+                score_map[idx] = score
+
+        # 按 score 降序排列
+        sorted_indices = sorted(
+            range(len(hits)),
+            key=lambda i: score_map.get(i, 0.0),
+            reverse=True,
+        )
+
+        reranked_hits = [hits[i] for i in sorted_indices[:top_k]]
+        rerank_breakdown: list[dict[str, float | str]] = []
+        for rank, idx in enumerate(sorted_indices[:top_k], start=1):
+            rerank_breakdown.append({
+                "chunk_id": hits[idx].chunk_id,
+                "source": hits[idx].source,
+                "rerank_score": round(score_map.get(idx, 0.0), 6),
+                "original_rank": str(idx + 1),
+                "new_rank": str(rank),
+            })
+
+        return reranked_hits, rerank_breakdown
+
+
+def build_reranker(config: AgentConfig) -> SimpleReranker | BGEReranker:
+    """根据配置构建合适的 reranker。
+
+    RERANK_ENABLED=false → SimpleReranker（直接返回）
+    RERANK_ENABLED=true + RERANKER_PROVIDER=ollama → BGEReranker（健康检查失败则降级）
+    """
+    if not config.rerank_enabled:
+        return SimpleReranker()
+
+    if config.rerank_provider == "ollama":
+        reranker = BGEReranker(
+            base_url=config.rerank_base_url,
+            model=config.rerank_model,
+        )
+        if not reranker._health_check():
+            logger.warning("[RAG] BGEReranker 健康检查未通过，使用 SimpleReranker 作为 fallback。")
+            return SimpleReranker()
+        return reranker
+
+    # 其他 provider fallback
+    return SimpleReranker()
