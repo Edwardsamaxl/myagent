@@ -1,44 +1,29 @@
 from __future__ import annotations
 
-import json
-from typing import Any
+from typing import Any, Callable
 
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, SystemMessage
-from langchain_core.tools import tool as langchain_tool
+from langchain_core.tools import BaseTool, StructuredTool
 
 from .state import AgentState
 
 
-def _make_langchain_tools(tools: dict[str, Any]) -> list[Any]:
-    """把 registry.Tool dict 转换为 LangChain tool 对象。
+def _make_langchain_tools(tools: dict[str, Any]) -> list[BaseTool]:
+    """把 registry.Tool dict 转换为 LangChain BaseTool 对象。
 
-    每个 Tool.func 是 Callable[[str], str]，直接转发即可。
+    每个 Tool.func 是 Callable[[str], str]，直接转发。
+    使用 StructuredTool.from_function 以兼容新版 langchain-core。
     """
 
-    @langchain_tool
-    def dynamic_tool(query: str, name: str, description: str, func: Any) -> str:
-        """动态工具包装器，实际执行委托给 func。"""
-        return func(query)
+    def make_tool(name: str, description: str, func: Callable[[str], str]) -> BaseTool:
+        return StructuredTool.from_function(
+            name=name,
+            description=description,
+            func=func,
+        )
 
     result = []
     for name, t in tools.items():
-        # 用 @langchain_tool 装饰器包装
-        tool_def = {"name": t.name, "description": t.description, "func": t.func}
-        # 用 functools.partial 绑定参数
-        import functools
-        import inspect
-
-        sig = inspect.signature(t.func)
-        params = list(sig.parameters.keys())
-
-        def make_wrapper(tool_name: str, tool_desc: str, tool_func: Any):
-            @langchain_tool(name=tool_name, description=tool_desc)
-            def wrapper(query: str) -> str:
-                return tool_func(query)
-
-            return wrapper
-
-        wrapped = make_wrapper(t.name, t.description, t.func)
+        wrapped = make_tool(t.name, t.description, t.func)
         result.append(wrapped)
 
     return result

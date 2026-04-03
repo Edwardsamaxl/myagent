@@ -12,7 +12,6 @@ from .nodes import should_continue
 def build_agent_graph(
     model: Any,
     tools: list[Any],
-    max_steps: int = 6,
 ) -> Any:
     """构建 LangGraph ReAct Agent。
 
@@ -21,21 +20,19 @@ def build_agent_graph(
     - 模型输出结构化 tool_call（MiniMax-M2.7 native tool-calling）
     - 框架解析 {name, arguments}
     - 执行工具并注入 ToolMessage
-    - 循环直到模型不再调用工具或达到 max_steps
+    - 循环直到模型不再调用工具
 
     参数:
         model: LangChain model provider（需要支持 tool_calling）
         tools: LangChain tool 对象列表（来自 nodes._make_langchain_tools）
-        max_steps: 最大工具调用轮数，防止无限循环
     """
 
     # create_react_agent 返回一个 CompiledGraph（AgentExecutor）
+    # 注：max_iterations 在新版 langgraph 中已移除，通过 agent.invoke 的 config 控制
     agent = create_react_agent(
         model=model,
         tools=tools,
         state_schema=AgentState,
-        max_iterations=max_steps,
-        # 捕获中间步骤的 tool 返回，方便调试
         debug=False,
     )
     return agent

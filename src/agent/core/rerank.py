@@ -232,11 +232,11 @@ class BGEReranker:
     输出 0~1 相关度分数，按分数降序排列。
 
     部署要求：
-        ollama pull BAAI/bge-reranker-v2-m3
+        ollama pull dengcao/bge-reranker-v2-m3
 
     API：POST /api/rerank
         {
-          "model": "BAAI/bge-reranker-v2-m3",
+          "model": "dengcao/bge-reranker-v2-m3:latest",
           "query": "...",
           "documents": ["...", "..."]
         }
@@ -247,7 +247,7 @@ class BGEReranker:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "BAAI/bge-reranker-v2-m3",
+        model: str = "dengcao/bge-reranker-v2-m3",
         timeout: int = 60,
     ) -> None:
         self.base_url = base_url.rstrip("/")
@@ -275,7 +275,7 @@ class BGEReranker:
             logger.warning(
                 "[BGEReranker] 健康检查失败，将降级为 SimpleReranker。"
                 f"原因: {exc}。"
-                "修复: 确认已运行 'ollama pull BAAI/bge-reranker-v2-m3'。"
+                "修复: 确认已运行 'ollama pull dengcao/bge-reranker-v2-m3'。"
             )
         return self._healthy
 
@@ -338,14 +338,113 @@ class BGEReranker:
         return reranked_hits, rerank_breakdown
 
 
-def build_reranker(config: AgentConfig) -> SimpleReranker | BGEReranker:
+class HuggingFaceReranker:
+    """基于 HuggingFace sentence-transformers CrossEncoder 的文档重排序。
+
+    使用 cross-encoder 架构，将 query + passage 一起编码，
+    输出相关度分数，按分数降序排列。
+
+    部署要求：
+        pip install sentence-transformers
+
+    模型列表（中文效果好）：
+        - "BAAI/bge-reranker-v2-m3"（推荐，Qwen3 训练，中文最优）
+        - "BAAI/bge-reranker-base-v2-m3"
+    """
+
+    def __init__(
+        self,
+        model: str = "BAAI/bge-reranker-v2-m3",
+        device: str = "cpu",
+        max_length: int = 512,
+    ) -> None:
+        self.model_name = model
+        self.device = device
+        self.max_length = max_length
+        self._encoder: Any = None
+        self._healthy = True
+
+    def _load(self) -> Any:
+        """懒加载模型，首次使用时才加载。"""
+        if self._encoder is not None:
+            return self._encoder
+        try:
+            from sentence_transformers import CrossEncoder
+            self._encoder = CrossEncoder(
+                self.model_name,
+                device=self.device,
+                max_length=self.max_length,
+            )
+            self._healthy = True
+            logger.info(f"[HuggingFaceReranker] 模型加载成功: {self.model_name}")
+            return self._encoder
+        except ImportError:
+            logger.warning("[HuggingFaceReranker] 未安装 sentence-transformers，请运行: pip install sentence-transformers")
+            self._healthy = False
+            raise
+        except Exception as exc:
+            self._healthy = False
+            logger.warning(f"[HuggingFaceReranker] 模型加载失败: {exc}")
+            raise
+
+    def rerank(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> list[RetrievalHit]:
+        reranked, _ = self.rerank_with_debug(query=query, hits=hits, top_k=top_k)
+        return reranked
+
+    def rerank_with_debug(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> tuple[list[RetrievalHit], list[dict[str, float | str]]]:
+        if not hits:
+            return [], []
+
+        encoder = self._load()
+
+        documents = [hit.text for hit in hits]
+        pairs = [[query, doc] for doc in documents]
+
+        try:
+            scores = encoder.predict(pairs, show_progress_bar=False)
+        except Exception as exc:
+            logger.warning(f"[HuggingFaceReranker] 预测失败: {exc}，跳过重排。")
+            return hits, []
+
+        if hasattr(scores, "tolist"):
+            scores = scores.tolist()
+
+        sorted_indices = sorted(
+            range(len(hits)),
+            key=lambda i: float(scores[i]),
+            reverse=True,
+        )
+
+        reranked_hits = [hits[i] for i in sorted_indices[:top_k]]
+        rerank_breakdown: list[dict[str, float | str]] = []
+        for rank, idx in enumerate(sorted_indices[:top_k], start=1):
+            rerank_breakdown.append({
+                "chunk_id": hits[idx].chunk_id,
+                "source": hits[idx].source,
+                "rerank_score": round(float(scores[idx]), 6),
+                "original_rank": str(idx + 1),
+                "new_rank": str(rank),
+            })
+
+        return reranked_hits, rerank_breakdown
+
+
+def build_reranker(config: AgentConfig) -> SimpleReranker | BGEReranker | HuggingFaceReranker:
     """根据配置构建合适的 reranker。
 
-    RERANK_ENABLED=false → SimpleReranker（直接返回）
-    RERANK_ENABLED=true + RERANKER_PROVIDER=ollama → BGEReranker（健康检查失败则降级）
+    RERANK_ENABLED=false → SimpleReranker
+    RERANKER_PROVIDER=huggingface → HuggingFaceReranker
+    RERANKER_PROVIDER=ollama → BGEReranker（健康检查失败则降级）
     """
     if not config.rerank_enabled:
         return SimpleReranker()
+
+    if config.rerank_provider == "huggingface":
+        return HuggingFaceReranker(model=config.rerank_model)
 
     if config.rerank_provider == "ollama":
         reranker = BGEReranker(
@@ -357,5 +456,4 @@ def build_reranker(config: AgentConfig) -> SimpleReranker | BGEReranker:
             return SimpleReranker()
         return reranker
 
-    # 其他 provider fallback
     return SimpleReranker()

@@ -76,7 +76,7 @@ class AgentConfig:
             retrieval_top_k=int(os.getenv("RETRIEVAL_TOP_K", "6")),
             rerank_top_k=int(os.getenv("RERANK_TOP_K", "3")),
             rerank_enabled=os.getenv("RERANK_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"},
-            rerank_provider=os.getenv("RERANKER_PROVIDER", "ollama").strip().lower(),
+            rerank_provider=os.getenv("RERANKER_PROVIDER", "huggingface").strip().lower(),
             rerank_model=os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3").strip(),
             rerank_base_url=os.getenv("RERANKER_BASE_URL", "http://localhost:11434").strip(),
             retrieval_fusion_mode=os.getenv("RETRIEVAL_FUSION_MODE", "weighted_sum").strip().lower(),
