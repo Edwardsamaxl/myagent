@@ -18,6 +18,37 @@ Agent 文件路径：`C:/Users/Ed/.claude/agents/<name>.md`
 
 ---
 
+## 2026-04-03 工作记录
+
+### 今日修复（已验证通过）
+
+#### 1. LangGraph 兼容性错误 ✅
+**问题**：Web UI 返回"服务内部错误"，错误为 `AttributeError: 'list' object has no attribute 'message'`
+**根因**：`ModelProviderWrapper._generate` 返回 `LLMResult(generations=[[chat_gen]])`（2层嵌套），但 LangChain 内部期望 `ChatResult(generations=[chat_gen])`（1层）
+**修复**：
+- `langgraph_agent.py` 第 54 行：导入从 `LLMResult` 改为 `ChatResult`
+- `langgraph_agent.py` 第 80 行：返回类型从 `LLMResult` 改为 `ChatResult`
+- `langgraph_agent.py` 第 95 行：`generations` 格式从 `[[chat_gen]]` 改为 `[chat_gen]`
+
+#### 2. 消息对象类型错误 ✅
+**问题**：`session_store.set_history()` 期望 `dict`，但收到 `SystemMessage` 等 LangChain 对象
+**修复**：`langgraph_agent.py` 的 `run()` 方法中添加 `msg_to_dict()` 转换函数
+
+#### 3. 流式接口 `split("")` bug ✅
+**问题**：`web_app.py` 第 244 行 `answer.split("")` 导致 `ValueError: empty separator`
+**修复**：改为直接遍历字符 `for i, ch in enumerate(answer):`
+
+### 当前状态
+- Web UI：`/api/chat` 和 `/api/chat/stream` 均返回 200 OK
+- API 认证：正常工作 (MiniMax-M2.7)
+- 工具调用：**未验证**（`tools` 参数传递链路待测试）
+
+### 待验证问题
+1. **Tool-calling 功能**：当前 `bind_tools` 存了 `self._bound_tools`，但 `_generate` 中 `self._inner.generate()` 没有传递 `tools` 参数给 API
+2. **Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常
+
+---
+
 ## 2026-03-31 工作记录
 
 ### 已完成
@@ -58,28 +89,15 @@ Agent 文件路径：`C:/Users/Ed/.claude/agents/<name>.md`
 
 ### 未解决问题
 
-#### 1. LangGraphAgent 运行时错误（BLOCKING）
-**问题**：`create_react_agent` 调用时 `AttributeError: 'list' object has no attribute 'message'`
-**原因**：LangChain `BaseChatModel._generate_with_cache` 内部缓存检查时，`generation` 变成了 `list` 而非 `ChatGeneration` 对象——`ModelProviderWrapper._generate` 返回的 `LLMResult` 格式与 LangChain 内部缓存机制不兼容
-**影响**：Web UI 提问返回"服务内部错误"
-**RAG 链路验证**：单独测 `rag.answer()` 正常工作，说明 RAG pipeline 没问题
-**修复方案**：放弃 `create_react_agent`，改用**手写 ReAct 循环**：
-
-```python
-while step < max_steps:
-    response = model.bind_tools(tools).invoke(messages)
-    if not response.tool_calls:
-        return response.content  # 最终答案
-    for tc in response.tool_calls:
-        result = execute_tool(tc.name, tc.arguments)
-        messages.append(ToolMessage(content=str(result), tool_call_id=tc.id))
-    step += 1
-```
+#### 1. Tool-calling 功能未验证（需测试）
+**问题**：`ModelProviderWrapper._generate` 中 `self._inner.generate()` 没有传递 `tools` 参数给 API
+**当前状态**：`self._bound_tools` 存储了工具定义，但 API 调用时未注入
+**影响**：Agent 无法调用工具，只能生成文本
 
 #### 2. sentence-transformers / PyTorch 版本
 **问题**：scoop 全局 Python 的 PyTorch 2.2 太旧，导致 transformers 5.4 报错
 **注意**：用户用 `ai_env` 环境跑，`torch` 是 2.5.1，不应该有问题
-**建议**：先解决 LangGraph 问题后再验证 reranker 是否正常
+**验证**：在 `ai_env` 中直接测试 `from sentence_transformers import CrossEncoder`
 
 #### 3. 评估数据格式
 **问题**：`expected_answer = "170899152276.34元或约1709亿元"` 但 chunk 里是"1709亿元"（不同格式），导致 recall=0
@@ -104,17 +122,16 @@ src/agent/
 │   ├── evaluation.py          # recall_at_k / hit_rate_at_k / mrr / GroundednessEvaluator
 │   └── schemas.py
 └── application/
-    └── agent_service.py       # AgentService → LangGraphAgent (待修复)
+    └── agent_service.py       # AgentService → LangGraphAgent (已修复)
 ```
 
 ### 下一步顺序
 
-1. **修复 LangGraphAgent**：用**手写 ReAct 循环**替代 `create_react_agent`（优先级 P0）
-2. **验证 RAG + Agent 链路**：能正常检索 + 生成 + 回答
-3. **解决 sentence-transformers**：确认 `pip install sentence-transformers` 在 `ai_env` 中成功
+1. **验证 Tool-calling 功能**：确认 `tools` 参数是否正确传递给 MiniMax API
+2. **测试 Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常工作
+3. **修复评估数据格式**：统一 expected_answer 与 chunk 原文的格式
 4. **跑 eval_retrieval.py**：验证 reranker + 评估框架
-5. **修复评估数据格式**：统一 expected_answer 与 chunk 原文的格式
-6. **commit 所有修复**
+5. **commit 所有修复**
 
 ---
 

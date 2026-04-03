@@ -241,8 +241,7 @@ def create_app(config: AgentConfig | None = None) -> Flask:
                     yield "data: [DONE]\n\n"
                     return
                 # Stream word by word for visual feedback
-                words = answer.split("")
-                for i, ch in enumerate(words):
+                for i, ch in enumerate(answer):
                     chunk = answer[:i+1]
                     import json as _json
                     yield f"data: {_json.dumps({'text': ch, 'done': False})}\n\n"

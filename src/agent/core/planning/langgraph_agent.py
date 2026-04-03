@@ -23,24 +23,13 @@ class AgentResult:
 
 
 def _convert_langchain_tools_to_anthropic(langchain_tools: list[Any]) -> list[dict]:
-    """把 LangChain tool 对象列表转成 Anthropic tool-calling 格式。
-
-    每个 LangChain tool 有 .name, .description, .args_schema (Pydantic model)。
-    转成 Anthropic 的 tools 格式：
-    {
-      "name": "...",
-      "description": "...",
-      "input_schema": {...}
-    }
-    """
+    """把 LangChain tool 对象列表转成 Anthropic tool-calling 格式。"""
     anthropic_tools = []
     for t in langchain_tools:
         name = getattr(t, "name", None) or getattr(t, "tool_name", None)
         description = getattr(t, "description", "")
-        # 取 input_schema（可能是 Pydantic model 或 dict）
         schema = getattr(t, "args_schema", None)
         if schema is None:
-            # 尝试从 tool 本身取
             schema = getattr(t, "schema", {})
 
         if hasattr(schema, "model_json_schema"):
@@ -59,13 +48,10 @@ def _convert_langchain_tools_to_anthropic(langchain_tools: list[Any]) -> list[di
 
 
 def _wrap_model_provider(model: ModelProvider) -> Any:
-    """把项目自有的 ModelProvider 包装成 LangChain BaseChatModel。
-
-    LangGraph create_react_agent 需要 LangChain chat model 接口
-    (.invoke, .bind_tools, .with_config 等)。
-    """
+    """把项目自有的 ModelProvider 包装成 LangChain BaseChatModel。"""
     from langchain_core.language_models import BaseChatModel
-    from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
+    from langchain_core.messages import AIMessage, BaseMessage
+    from langchain_core.outputs import ChatGeneration, ChatResult
 
     class ModelProviderWrapper(BaseChatModel):
         """把 ModelProvider 适配成 LangChain BaseChatModel。"""
@@ -91,10 +77,9 @@ def _wrap_model_provider(model: ModelProvider) -> Any:
             messages: list[BaseMessage],
             stop: Optional[list[str]] = None,
             **kwargs: Any,
-        ) -> Any:
+        ) -> ChatResult:
             lc_messages = self._to_lc_messages(messages)
 
-            # 注入 tools 参数（如果 bind_tools 被调用过）
             extra_kwargs: dict[str, Any] = {}
             if self._bound_tools:
                 extra_kwargs["tools"] = self._bound_tools
@@ -106,13 +91,8 @@ def _wrap_model_provider(model: ModelProvider) -> Any:
             )
 
             ai_msg = AIMessage(content=content)
-
-            # 构造 FakeStreamedGenerator 输出
-            class _Result:
-                generations = [[type("_Gen", (), {"message": ai_msg, "text": content})()]]
-                llm_output = {}
-
-            return _Result()
+            chat_gen = ChatGeneration(message=ai_msg)
+            return ChatResult(generations=[chat_gen])
 
         def bind_tools(self, tools: list[Any], **kwargs: Any) -> "ModelProviderWrapper":
             """LangGraph 要求 chat model 实现 bind_tools。
@@ -135,11 +115,6 @@ class LangGraphAgent:
     使用 MiniMax-M2.7 native tool-calling 协议，
     LangGraph create_react_agent 内部自动处理结构化解码与工具执行，
     不依赖 action 字符串解析。
-
-    工具列表：
-    - get_time / calculate / read_memory / remember / list_skills
-    - read_skill / save_skill / read_workspace_file / web_search
-    - search_knowledge_base（RAG 工具，由 rag_service 构造）
     """
 
     def __init__(
@@ -152,18 +127,15 @@ class LangGraphAgent:
         self.model = model
         self.tools = tools
 
-        # 把 Tool dict 转成 LangChain tool
         lc_tools = _make_langchain_tools(tools)
         if not lc_tools:
             logger.warning("[LangGraphAgent] 没有任何可用工具，Agent 将退化为纯生成模式。")
 
-        # 包装成 LangChain compatible model
         lc_model = _wrap_model_provider(model)
 
         self._agent = build_agent_graph(
             model=lc_model,
             tools=lc_tools,
-            max_steps=config.max_steps,
         )
 
     def run(
@@ -172,28 +144,31 @@ class LangGraphAgent:
         history_messages: list[dict] | None = None,
         long_context: str = "",
     ) -> AgentResult:
-        """执行单轮 Agent 对话。
-
-        long_context 作为 system prompt 注入到首条消息。
-        """
         messages = []
         if long_context:
             messages.append({"role": "system", "content": f"【长期上下文】\n{long_context}\n\n【当前对话】"})
 
         result = run_agent(self._agent, user_input, messages)
 
-        # 统计 tool_calls
         tool_calls = []
-        for msg in result.get("messages", []):
+        lc_messages = result.get("messages", [])
+        for msg in lc_messages:
             if hasattr(msg, "type") and msg.type == "tool":
                 tool_calls.append(getattr(msg, "name", "unknown"))
 
-        steps_used = len([m for m in result.get("messages", [])
-                          if hasattr(m, "type") and m.type == "tool"])
+        steps_used = len([m for m in lc_messages if hasattr(m, "type") and m.type == "tool"])
+
+        # 转换 LangChain 消息对象为 dict（供 session_store 使用）
+        def msg_to_dict(m):
+            if isinstance(m, dict):
+                return m
+            role = "assistant" if getattr(m, "type", "") in ("ai", "tool") else getattr(m, "type", "user")
+            content = getattr(m, "content", "")
+            return {"role": role, "content": content}
 
         return AgentResult(
             answer=result.get("answer", ""),
             steps_used=steps_used,
-            messages=result.get("messages", []),
+            messages=[msg_to_dict(m) for m in lc_messages],
             tool_calls=tool_calls,
         )
