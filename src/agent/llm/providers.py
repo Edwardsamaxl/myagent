@@ -30,8 +30,20 @@ class ModelProvider(ABC):
         messages: list[Message],
         temperature: float,
         max_tokens: int,
+        tools: list[dict[str, Any]] | None = None,
     ) -> str:
         raise NotImplementedError
+
+    def generate_raw(
+        self,
+        messages: list[Message],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """返回原始 API 响应（供 tool calling 使用）。默认实现调用 generate 并包装。"""
+        text = self.generate(messages, temperature, max_tokens, tools)
+        return {"content": [{"type": "text", "text": text}]}
 
 
 class OllamaProvider(ModelProvider):
@@ -44,6 +56,7 @@ class OllamaProvider(ModelProvider):
         messages: list[Message],
         temperature: float,
         max_tokens: int,
+        tools: list[dict[str, Any]] | None = None,
     ) -> str:
         url = f"{self.base_url}/api/chat"
         payload: dict[str, Any] = {
@@ -55,6 +68,8 @@ class OllamaProvider(ModelProvider):
                 "num_predict": max_tokens,
             },
         }
+        if tools:
+            payload["tools"] = tools
         response = requests.post(url, json=payload, timeout=120)
         response.raise_for_status()
         data = response.json()
@@ -100,11 +115,12 @@ class _HTTPChatProvider(ModelProvider):
         messages: list[Message],
         temperature: float,
         max_tokens: int,
+        tools: list[dict[str, Any]] | None = None,
     ) -> str:
         if not self.api_key:
             raise ValueError(f"{self.__class__.__name__}: API key 为空")
 
-        payload = self._build_payload(messages, temperature, max_tokens)
+        payload = self._build_payload(messages, temperature, max_tokens, tools)
         url = f"{self.base_url}{self._endpoint()}"
         response = requests.post(
             url,
@@ -115,12 +131,38 @@ class _HTTPChatProvider(ModelProvider):
         response.raise_for_status()
         return self._parse_response(response.json())
 
+    def generate_raw(
+        self,
+        messages: list[Message],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """返回原始 API 响应（包含 stop_reason、content 等完整信息）。"""
+        if not self.api_key:
+            raise ValueError(f"{self.__class__.__name__}: API key 为空")
+
+        payload = self._build_payload(messages, temperature, max_tokens, tools)
+        url = f"{self.base_url}{self._endpoint()}"
+        response = requests.post(
+            url,
+            headers=self._build_headers(),
+            json=payload,
+            timeout=120,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def _endpoint(self) -> str:
         """子类返回 API 端点路径"""
         raise NotImplementedError
 
     def _build_payload(
-        self, messages: list[Message], temperature: float, max_tokens: int
+        self,
+        messages: list[Message],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict[str, Any]] | None,
     ) -> dict[str, Any]:
         """子类返回请求 payload"""
         raise NotImplementedError
@@ -133,14 +175,21 @@ class OpenAICompatibleProvider(_HTTPChatProvider):
         return "/v1/chat/completions"
 
     def _build_payload(
-        self, messages: list[Message], temperature: float, max_tokens: int
+        self,
+        messages: list[Message],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict[str, Any]] | None,
     ) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "model": self.model_name,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if tools:
+            payload["tools"] = tools
+        return payload
 
 
 class AnthropicCompatibleProvider(_HTTPChatProvider):
@@ -150,14 +199,21 @@ class AnthropicCompatibleProvider(_HTTPChatProvider):
         return "/v1/messages"
 
     def _build_payload(
-        self, messages: list[Message], temperature: float, max_tokens: int
+        self,
+        messages: list[Message],
+        temperature: float,
+        max_tokens: int,
+        tools: list[dict[str, Any]] | None,
     ) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "model": self.model_name,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if tools:
+            payload["tools"] = tools
+        return payload
 
     def _build_headers(self) -> dict[str, str]:
         headers = super()._build_headers()
@@ -182,8 +238,9 @@ class MockProvider(ModelProvider):
         messages: list[Message],
         temperature: float,
         max_tokens: int,
+        tools: list[dict[str, Any]] | None = None,
     ) -> str:
-        _ = (temperature, max_tokens)
+        _ = (temperature, max_tokens, tools)
         last_user_message = ""
         for msg in reversed(messages):
             if msg.get("role") == "user":

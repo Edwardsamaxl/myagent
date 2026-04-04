@@ -18,6 +18,45 @@ Agent 文件路径：`C:/Users/Ed/.claude/agents/<name>.md`
 
 ---
 
+## 2026-04-04 工作记录
+
+### Tool-calling 修复（已验证通过）✅
+
+**问题**：`ModelProviderWrapper._generate` 中 `self._bound_tools` 未传递给 API，且 `generate()` 返回纯文本丢失 tool_use 信息。
+
+**修复**（涉及 3 个文件）：
+
+1. **`src/agent/llm/providers.py`**
+   - `ModelProvider.generate()` 添加 `tools` 参数
+   - `_HTTPChatProvider.generate()` 添加 `tools` 参数
+   - `OpenAICompatibleProvider._build_payload()` 支持 tools
+   - `AnthropicCompatibleProvider._build_payload()` 支持 tools
+   - `OllamaProvider.generate()` 支持 tools
+   - `MockProvider.generate()` 支持 tools
+   - 新增 `generate_raw()` 方法返回完整 API 响应
+
+2. **`src/agent/core/planning/langgraph_agent.py`**
+   - `_generate()` 使用 `generate_raw()` 获取原始响应
+   - 正确解析 `tool_use` 并构建 LangChain `ToolCall`
+   - 使用 `AIMessage(tool_calls=[...])` 格式
+
+3. **`src/agent/tools/registry.py`**
+   - `get_time()`: `(_: str)` → `()`
+   - `read_memory()`: `(_: str)` → `()`
+   - `list_skills()`: `(_: str)` → `()`
+
+**验证结果**：
+- `get_time`: Answer = "当前时间是 **2026年4月4日 14:24:57**", Steps = 1
+- `calculate`: Answer = "20", Steps = 3
+- `read_memory`: 正确读取记忆文件内容, Steps = 1
+
+### 待验证问题
+
+1. **Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常
+2. **评估数据格式**：`expected_answer` 与 chunk 原文格式不匹配
+
+---
+
 ## 2026-04-03 工作记录
 
 ### 今日修复（已验证通过）
@@ -41,10 +80,10 @@ Agent 文件路径：`C:/Users/Ed/.claude/agents/<name>.md`
 ### 当前状态
 - Web UI：`/api/chat` 和 `/api/chat/stream` 均返回 200 OK
 - API 认证：正常工作 (MiniMax-M2.7)
-- 工具调用：**未验证**（`tools` 参数传递链路待测试）
+- 工具调用：**已验证通过**（2026-04-04）
 
 ### 待验证问题
-1. **Tool-calling 功能**：当前 `bind_tools` 存了 `self._bound_tools`，但 `_generate` 中 `self._inner.generate()` 没有传递 `tools` 参数给 API
+1. **Tool-calling 功能**：✅ 已修复并验证
 2. **Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常
 
 ---
@@ -127,11 +166,10 @@ src/agent/
 
 ### 下一步顺序
 
-1. **验证 Tool-calling 功能**：确认 `tools` 参数是否正确传递给 MiniMax API
-2. **测试 Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常工作
-3. **修复评估数据格式**：统一 expected_answer 与 chunk 原文的格式
-4. **跑 eval_retrieval.py**：验证 reranker + 评估框架
-5. **commit 所有修复**
+1. **测试 Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常工作
+2. **修复评估数据格式**：统一 expected_answer 与 chunk 原文的格式
+3. **跑 eval_retrieval.py**：验证 reranker + 评估框架
+4. **commit 所有修复**
 
 ---
 

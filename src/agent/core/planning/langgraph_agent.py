@@ -54,7 +54,11 @@ def _wrap_model_provider(model: ModelProvider) -> Any:
     from langchain_core.outputs import ChatGeneration, ChatResult
 
     class ModelProviderWrapper(BaseChatModel):
-        """把 ModelProvider 适配成 LangChain BaseChatModel。"""
+        """把 ModelProvider 适配成 LangChain BaseChatModel。
+
+        直接处理 MiniMax-M2.7 的 tool_use 响应格式，
+        将 tool_use 转换为 LangChain 的 ToolCall 格式。
+        """
 
         def __init__(self, inner: ModelProvider) -> None:
             super().__init__()
@@ -80,17 +84,53 @@ def _wrap_model_provider(model: ModelProvider) -> Any:
         ) -> ChatResult:
             lc_messages = self._to_lc_messages(messages)
 
-            extra_kwargs: dict[str, Any] = {}
-            if self._bound_tools:
-                extra_kwargs["tools"] = self._bound_tools
-
-            content = self._inner.generate(
+            # 使用 generate_raw 获取完整响应（包含 tool_use 信息）
+            raw_response = self._inner.generate_raw(
                 messages=lc_messages,
+                tools=self._bound_tools if self._bound_tools else None,
                 temperature=kwargs.get("temperature", 0.2),
                 max_tokens=kwargs.get("max_tokens", 768),
             )
 
-            ai_msg = AIMessage(content=content)
+            # raw_response 是完整的 API 响应 dict
+            # 检查是否包含 tool_use 信息
+            tool_use = None
+            content_list = raw_response.get("content", [])
+            for item in content_list:
+                if isinstance(item, dict) and item.get("type") == "tool_use":
+                    tool_use = item
+                    break
+
+            if tool_use:
+                # 构建带 tool_call 的 AIMessage
+                tool_name = tool_use.get("name", "")
+                tool_input = tool_use.get("input", {})
+                tool_id = tool_use.get("id", "")
+
+                # 使用 LangChain 的 ToolCall 格式
+                from langchain_core.messages import ToolCall
+                tc = ToolCall(
+                    name=tool_name,
+                    args=tool_input if isinstance(tool_input, dict) else {},
+                    id=tool_id,
+                )
+                ai_msg = AIMessage(
+                    content="",
+                    tool_calls=[tc],
+                )
+            else:
+                # 普通文本响应：提取 text 类型的内容
+                text_content = ""
+                for item in content_list:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text_content = item.get("text", "")
+                        break
+                if not text_content:
+                    # fallback: 使用 stop_reason 或空字符串
+                    text_content = raw_response.get("stop_reason", "")
+
+                ai_msg = AIMessage(content=text_content)
+
             chat_gen = ChatGeneration(message=ai_msg)
             return ChatResult(generations=[chat_gen])
 

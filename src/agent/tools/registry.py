@@ -56,7 +56,7 @@ class Tool:
     func: ToolFunc
 
 
-def get_time(_: str) -> str:
+def get_time() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
@@ -199,13 +199,13 @@ def default_tools(
     workspace_dir: Path,
     rag_service: Any = None,
 ) -> dict[str, Tool]:
-    def read_memory(_: str) -> str:
+    def read_memory() -> str:
         return memory_store.read()
 
     def remember(note: str) -> str:
         return memory_store.append(note)
 
-    def list_skills(_: str) -> str:
+    def list_skills() -> str:
         skills = skill_store.list_skills()
         if not skills:
             return "暂无技能。"
