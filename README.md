@@ -1,104 +1,259 @@
 # mini-evolving-agent
 
-一个可本地运行、可视化操作的最小 Agent。核心目标：
-- 默认使用本地 `ollama/qwen2.5:7b`；
-- 通过 Web UI 聊天，不依赖 CLI 操作；
-- 支持模型热切换（provider + model_name）；
-- 保留 `MEMORY.md` 与 `skills/*.md`，让 Agent 可持续演化；
-- 保留工具调用闭环（模型 -> 工具 -> 结果回灌 -> 回复）。
+> 一个面向算法工程师面试的 RAG + Agent 系统。展示 RAG pipeline 优化能力、Agent 架构设计能力与工程实现能力。
 
-## 分层结构
+核心定位：**混合检索 + 多阶段重排 + 可观测 Agent**，默认使用 MiniMax-M2.7（Anthropic 兼容 API），支持本地模型热切换。
 
-```text
+---
+
+## 整体架构
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      Web UI (Flask)                     │
+│   聊天 · Session 切换 · 模型热切换 · 记忆/技能编辑     │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+┌───────────────────────▼─────────────────────────────────┐
+│              Application Layer                           │
+│   AgentService  ·  RagAgentService  ·  Coordinator       │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+┌───────────────────────▼─────────────────────────────────┐
+│                  Agent Core                              │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
+│  │ Planner  │  │  Worker  │  │Synthesiz.│  │ Loop   │ │
+│  │(任务分解)│→ │Executor  │→ │(汇总生成) │  │(兼容)  │ │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+┌───────────────────────▼─────────────────────────────────┐
+│                 RAG Pipeline                            │
+│  Ingestion → HybridRetriever → Reranker → Generation   │
+│  (文档摄入)   (lexical+tfidf/       (Simple/BGE/Cascade│
+│               BM25+embedding)        Reranker)         │
+└───────────────────────┬─────────────────────────────────┘
+                        │
+┌───────────────────────▼─────────────────────────────────┐
+│                   LLM Providers                          │
+│  anthropic_compatible · openai_compatible · ollama      │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 目录结构
+
+```
 myagent/
-├─ main.py                      # 启动入口（Web）
+├─ main.py                          # 启动入口（Web 服务）
 ├─ requirements.txt
 ├─ .env.example
-├─ runtime/                     # 运行时数据（会话等）
-├─ workspace/                   # 可进化资产（MEMORY + skills）
+├─ runtime/                         # 运行时数据
+│   ├─ sessions.json               # 会话历史
+│   ├─ traces.jsonl                # 执行链路追踪
+│   └─ eval_records.jsonl           # 评估记录
+├─ workspace/                       # 可进化资产
+│   ├─ MEMORY.md                   # 长期记忆
+│   └─ skills/                     # 技能库（.md 文件）
 └─ src/agent/
-   ├─ config.py                 # 配置层
-  ├─ core/                     # 领域核心层（loop + memory + skill + session + rag skeleton）
-   ├─ llm/                      # 模型提供商层
-   ├─ tools/                    # 工具注册层
-   ├─ application/              # 应用服务层（编排）
-   ├─ interfaces/               # 接口层（Web API + UI）
-   ├─ agent.py                  # 兼容导出（指向 core）
-   ├─ providers.py              # 兼容导出（指向 llm）
-   ├─ service.py                # 兼容导出（指向 application）
-   └─ web.py                    # 兼容导出（指向 interfaces）
+   ├─ config.py                    # 配置层（所有环境变量集中管理）
+   ├─ core/
+   │   ├─ agent_loop.py            # Agent 状态机循环（兼容）
+   │   ├─ planning/
+   │   │   ├─ coordinator.py       # 主调度器（Plan→Worker→Synthesize）
+   │   │   ├─ planner.py          # 任务分解器（LLM 生成步骤计划）
+   │   │   ├─ synthesizer.py       # 结果汇总器（基于证据生成回答）
+   │   │   ├─ plan_schema.py       # Plan 数据结构
+   │   │   └─ worker_result.py     # Worker 执行结果封装
+   │   ├─ retrieval.py             # 混合检索（lexical + tfidf/BM25 + embedding）
+   │   ├─ rerank.py                # 多级重排（Simple · BGE · HuggingFace · Cascade）
+   │   ├─ ingestion.py             # 文档清洗·切块·去重
+   │   ├─ generation.py            # 基于证据生成 + 拒答
+   │   ├─ evaluation.py            # RAG 评估（Recall@K · HitRate · MRR · LLM Groundedness）
+   │   ├─ observability.py          # trace 事件记录
+   │   └─ schemas.py              # 数据模型（DocumentChunk · RetrievalHit · EvalRecord）
+   ├─ application/
+   │   ├─ agent_service.py         # Agent 编排层
+   │   └─ rag_agent_service.py     # RAG 链路编排（含 embedding 健康检查与降级）
+   ├─ llm/
+   │   ├─ providers.py             # 多 Provider 统一抽象
+   │   └─ embeddings.py           # Embedding 提供者（Ollama qwen3-embedding · Mock）
+   ├─ tools/
+   │   └─ registry.py             # 工具注册与调用协议
+   ├─ interfaces/
+   │   └─ web_app.py              # Flask Web UI + REST API
+   └─ (compat) agent.py · providers.py · service.py · web.py
 ```
+
+---
 
 ## 快速启动
 
-1) 安装依赖
-
 ```powershell
+# 1. 安装依赖
 pip install -r requirements.txt
-```
 
-2) 配置环境变量
-
-```powershell
+# 2. 配置环境变量
 copy .env.example .env
-```
+# 编辑 .env，填入你的 API Key（若使用 anthropic_compatible 或 openai_compatible）
 
-3) 启动
-
-```powershell
+# 3. 启动
 python main.py
+
+# 4. 打开页面
+open http://127.0.0.1:7860
 ```
 
-4) 打开页面
+**默认配置**：使用 `anthropic_compatible` provider + `MiniMax-M2.7` 模型，embedding 通道使用 Ollama `qwen3-embedding`（4096维）。
 
-`http://127.0.0.1:7860`
+---
 
-## Web UI 功能
+## 核心能力详解
 
-- 聊天窗口（支持工具调用链路）；
-- Session ID 切换；
-- Provider / Model 切换并立即生效；
-- 在线编辑 `MEMORY.md`；
-- 在线读取与保存 `skills/*.md`。
-- RAG 文档摄入（手工输入文本 -> 入库）。
+### 1. 混合检索（Hybrid Retrieval）
 
-## 企业级骨架（已预置，待你逐模块加强）
+三层检索通道，支持权重求和或 RRF fusion：
 
-- `core/ingestion.py`：清洗、切块、去重、元数据。
-- `core/retrieval.py`：混合检索占位实现（词法 + 简化语义分数）。
-- `core/rerank.py`：重排占位实现（可替换为真实 reranker）。
-- `core/generation.py`：基于证据生成与拒答骨架。
-- `core/evaluation.py`：在线评估记录与聚合指标。
-- `core/observability.py`：trace 事件记录。
-- `application/rag_agent_service.py`：RAG 编排层。
+| 通道 | 权重（默认） | 说明 |
+|------|-------------|------|
+| Lexical（词元重叠） | 0.35 | query token 与 chunk token 重叠度 |
+| TF-IDF / BM25 | 0.25 | 词频-逆文档频率（可切换 `tfidf` · `bm25` · `tfidf_bm25`） |
+| Embedding（qwen3-embedding） | 0.40 | Ollama 本地向量（4096维，健康检查失败自动降级为纯词频） |
 
-### 新增 API（框架级）
+```env
+RETRIEVAL_FUSION_MODE=weighted_sum   # 或 rrf
+RETRIEVAL_LEXICAL_WEIGHT=0.35
+RETRIEVAL_TFIDF_WEIGHT=0.25
+RETRIEVAL_EMBEDDING_WEIGHT=0.40
+EMBEDDING_ENABLED=true
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_MODEL=qwen3-embedding
+SPARSE_MODE=tfidf
+```
 
-- `POST /api/ingest`：写入文档到检索库。
-- `POST /api/rag`：走 RAG 链路回答问题。
-- `GET /api/metrics`：查看在线评估聚合指标。
+### 2. 多级重排（Rerank）
 
-## 可进化机制
+| Reranker | 说明 | 部署要求 |
+|----------|------|---------|
+| `SimpleReranker` | 规则分（keyword/length/metadata/numeric bonus） | 默认，无额外依赖 |
+| `BGEReranker` | Ollama BGE cross-encoder 精排 | `ollama pull dengcao/bge-reranker-v2-m3` |
+| `HuggingFaceReranker` | sentence-transformers CrossEncoder | `pip install sentence-transformers` |
+| `CascadeReranker` | 规则初筛（2×top_k）→ BGE/HF 精排，两阶段串联 | 上述任一 |
 
-- **长期记忆**：写入 `workspace/MEMORY.md`；
-- **技能学习**：保存到 `workspace/skills/*.md`；
-- **工具调用**：模型可调用内置工具操作记忆、技能与 workspace 文件；
-- **会话沉淀**：历史写入 `runtime/sessions.json`。
+```env
+RERANK_ENABLED=true
+RERANK_CASCADE=true                  # 启用两阶段串联
+RERANKER_PROVIDER=huggingface        # 或 ollama
+RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+```
+
+### 3. Coordinator 规划层
+
+`Coordinator` 实现 **Plan → Execute → Synthesize** 三阶段：
+
+```
+用户问题
+    │
+    ▼
+┌─────────┐  LLM 分解任务
+│ Planner │ → { plan_id, goal, steps: [{action, detail, depends_on}] }
+└────┬────┘
+     │
+     ▼
+┌──────────────────┐  并行/串行执行（ThreadPoolExecutor）
+│  WorkerExecutor  │  action: rag · calc · web · memory · synthesize
+│  (工具调用)        │
+└────┬─────────────┘
+     │
+     ▼
+┌────────────┐
+│ Synthesizer│  汇总 worker 结果 + 证据 → 生成最终回答
+└────────────┘
+```
+
+- **action 类型**：`rag`（知识库检索）、`calc`（计算）、`web`（联网搜索）、`memory`（读写记忆）、`synthesize`（汇总生成）
+- **依赖调度**：根据 `depends_on` 与 `parallel_with` 自动拓扑排序，独立任务并行执行
+- **降级策略**：Planner JSON 解析失败时，自动降级为直接 synthesize
+
+### 4. RAG 评估指标体系
+
+| 指标 | 说明 |
+|------|------|
+| `Recall@K` | Top-K 检索结果中包含正确答案的比例 |
+| `HitRate@K` | Top-K 是否存在任意命中文档（0/1） |
+| `MRR` | 首个命中位置权重（1/rank） |
+| `GroundednessEvaluator` | LLM 评估生成内容被证据支持的比例（0~1） |
+| `RelevanceEvaluator` | LLM 评估回答与问题的相关程度（0~1） |
+| `substring_match_rate` | 离线评估：参考答案子串命中比例 |
+
+### 5. 可进化机制
+
+- **长期记忆**：`workspace/MEMORY.md`，Agent 可读写
+- **技能学习**：`workspace/skills/*.md`，按需加载
+- **会话沉淀**：`runtime/sessions.json`
+- **可观测**：`runtime/traces.jsonl` 记录完整执行链路
+
+---
+
+## API 概览
+
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/chat` | POST | Agent 对话（支持工具调用链路） |
+| `/api/rag` | POST | 纯 RAG 链路（检索→重排→生成） |
+| `/api/ingest` | POST | 文档摄入（PDF/TXT） |
+| `/api/metrics` | GET | 在线评估聚合指标 |
+| `/api/sessions` | GET | 列出所有会话 |
+| `/:session_id` | GET | 切换 Session |
+
+---
+
+## 技术栈
+
+| 层级 | 技术 |
+|------|------|
+| Web 框架 | Flask |
+| LLM | anthropic_compatible / openai_compatible / ollama |
+| Embedding | qwen3-embedding（4096维，阿里 Qwen3，Ollama） |
+| Reranker | BAAI/bge-reranker-v2-m3（CrossEncoder） |
+| Agent | LangGraph（规划层）+ 自研 Coordinator |
+| 评估 | Recall@K · HitRate · MRR · LLM-based Groundedness |
+| 向量存储 | 内存索引（惰性计算 + 磁盘持久化） |
+
+---
 
 ## 关键环境变量
 
-- `MODEL_PROVIDER=ollama|openai_compatible|mock`
-- `MODEL_NAME=qwen2.5:7b`
-- `OLLAMA_BASE_URL=http://localhost:11434`
-- `OPENAI_BASE_URL=https://api.openai.com`
-- `OPENAI_API_KEY=...`（仅 openai_compatible 需要）
-- `WEB_HOST=127.0.0.1`
-- `WEB_PORT=7860`
-- `DATA_DIR=./runtime`
-- `WORKSPACE_DIR=./workspace`
-- `RAG_ENABLED=true|false`
-- `CHUNK_SIZE=500`
-- `CHUNK_OVERLAP=80`
-- `RETRIEVAL_TOP_K=6`
-- `RERANK_TOP_K=3`
+```env
+# 模型（默认 anthropic_compatible + MiniMax-M2.7）
+MODEL_PROVIDER=anthropic_compatible
+MODEL_NAME=MiniMax-M2.7
+ANTHROPIC_AUTH_TOKEN=your_token_here
+ANTHROPIC_BASE_URL=https://api.minimaxi.com/anthropic
 
+# Embedding（Ollama 本地）
+EMBEDDING_ENABLED=true
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_MODEL=qwen3-embedding
+
+# 检索权重（embedding 不可用时自动降级为纯词频）
+RETRIEVAL_FUSION_MODE=weighted_sum
+RETRIEVAL_LEXICAL_WEIGHT=0.35
+RETRIEVAL_TFIDF_WEIGHT=0.25
+RETRIEVAL_EMBEDDING_WEIGHT=0.40
+
+# 重排
+RERANK_ENABLED=true
+RERANK_CASCADE=true
+RERANKER_PROVIDER=huggingface
+RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+
+# Agent（USE_COORDINATOR=true 启用规划层）
+USE_COORDINATOR=false
+MAX_STEPS=6
+
+# Web
+WEB_HOST=127.0.0.1
+WEB_PORT=7860
+```
