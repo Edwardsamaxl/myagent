@@ -32,6 +32,8 @@ class AgentConfig:
     rerank_provider: str
     rerank_model: str
     rerank_base_url: str
+    rerank_cascade: bool
+    use_coordinator: bool
     retrieval_fusion_mode: str
     retrieval_lexical_weight: float
     retrieval_tfidf_weight: float
@@ -79,6 +81,7 @@ class AgentConfig:
             rerank_provider=os.getenv("RERANKER_PROVIDER", "huggingface").strip().lower(),
             rerank_model=os.getenv("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3").strip(),
             rerank_base_url=os.getenv("RERANKER_BASE_URL", "http://localhost:11434").strip(),
+            rerank_cascade=os.getenv("RERANK_CASCADE", "true").strip().lower() in {"1", "true", "yes", "on"},
             retrieval_fusion_mode=os.getenv("RETRIEVAL_FUSION_MODE", "weighted_sum").strip().lower(),
             retrieval_lexical_weight=float(os.getenv("RETRIEVAL_LEXICAL_WEIGHT", "0.35")),
             retrieval_tfidf_weight=float(os.getenv("RETRIEVAL_TFIDF_WEIGHT", "0.25")),
@@ -86,9 +89,10 @@ class AgentConfig:
             embedding_enabled=os.getenv("EMBEDDING_ENABLED", "true").strip().lower()
             in {"1", "true", "yes", "on"},
             embedding_provider=os.getenv("EMBEDDING_PROVIDER", "").strip().lower(),
-            embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text").strip(),
+            embedding_model=os.getenv("EMBEDDING_MODEL", "qwen3-embedding").strip(),
             embedding_top_k=int(os.getenv("EMBEDDING_TOP_K", "12")),
             rag_enabled=os.getenv("RAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"},
+            use_coordinator=os.getenv("USE_COORDINATOR", "false").strip().lower() in {"1", "true", "yes", "on"},
             trace_file=trace_file,
             eval_records_file=eval_records_file,
         )

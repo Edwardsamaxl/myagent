@@ -5,9 +5,14 @@ from enum import Enum
 
 
 class PlanStepAction(str, Enum):
-    RAG = "rag"
-    AGENT_LOOP = "agent_loop"
-    CLARIFY = "clarify"
+    """任务步骤动作类型"""
+    RAG = "rag"                  # 文档检索
+    CALC = "calc"                # 算术计算
+    WEB = "web"                  # 网络搜索
+    MEMORY = "memory"            # 记忆操作
+    SYNTHESIZE = "synthesize"    # 汇总生成
+    AGENT_LOOP = "agent_loop"    # 保留：通用工具循环
+    CLARIFY = "clarify"          # 保留：澄清问题
 
 
 class PlanStepStatus(str, Enum):
@@ -20,11 +25,12 @@ class PlanStepStatus(str, Enum):
 
 @dataclass
 class PlanStep:
-    id: str
-    action: PlanStepAction
-    detail: str
+    id: str                           # 步骤 ID，如 "s1"
+    action: PlanStepAction            # 动作类型
+    detail: str                       # 详细描述
     status: PlanStepStatus = PlanStepStatus.PENDING
-    depends_on: list[str] = field(default_factory=list)
+    depends_on: list[str] = field(default_factory=list)       # 依赖的步骤 ID
+    parallel_with: list[str] = field(default_factory=list)    # 可并行的步骤 ID
 
 
 @dataclass

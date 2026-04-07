@@ -1,6 +1,6 @@
-# mini-evolving-agent
+# Fin-agent
 
-> 一个面向算法工程师面试的 RAG + Agent 系统。展示 RAG pipeline 优化能力、Agent 架构设计能力与工程实现能力。
+> 一个面向金融领域的 RAG + Agent 问答系统。展示 RAG pipeline 优化能力、Agent 架构设计能力与工程实现能力。
 
 核心定位：**混合检索 + 多阶段重排 + 可观测 Agent**，默认使用 MiniMax-M2.7（Anthropic 兼容 API），支持本地模型热切换。
 

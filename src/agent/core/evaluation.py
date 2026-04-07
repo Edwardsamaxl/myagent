@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -111,6 +112,11 @@ class GenerationEvalRecord:
 # 检索指标计算
 # ---------------------------------------------------------------------------
 
+def _normalize_numbers(text: str) -> str:
+    """Remove comma thousand-separators from numbers for format-agnostic matching."""
+    return re.sub(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", lambda m: m.group().replace(",", ""), text)
+
+
 def recall_at_k(
     hits: list[str],
     expected_answers: list[str],
@@ -119,6 +125,8 @@ def recall_at_k(
     """Recall@K：Top-K 检索结果中包含正确答案的比例。
 
     判断"包含"：expected_answer 子串是否出现在 hit 文本中。
+    数字格式归一化：源文本中的千分位逗号会被移除后再匹配，
+    例如 "1,234,567" 与 "1234567" 可匹配。
     """
     top_k_hits = hits[:k]
     if not expected_answers:
@@ -128,8 +136,10 @@ def recall_at_k(
         expected_clean = expected.strip()
         if not expected_clean:
             continue
+        expected_norm = _normalize_numbers(expected_clean)
         for hit in top_k_hits:
-            if expected_clean in hit:
+            hit_norm = _normalize_numbers(hit)
+            if expected_norm in hit_norm or expected_clean in hit:
                 matched += 1
                 break
     return matched / len(expected_answers)
@@ -146,8 +156,10 @@ def hit_rate_at_k(
         expected_clean = expected.strip()
         if not expected_clean:
             continue
+        expected_norm = _normalize_numbers(expected_clean)
         for hit in top_k_hits:
-            if expected_clean in hit:
+            hit_norm = _normalize_numbers(hit)
+            if expected_norm in hit_norm or expected_clean in hit:
                 return 1.0
     return 0.0
 
@@ -159,8 +171,12 @@ def mean_reciprocal_rank(
     """MRR：第一个命中的位置权重，1/rank；无命中则 0。"""
     for rank, hit in enumerate(hits, start=1):
         for expected in expected_answers:
-            if expected.strip() and expected.strip() in hit:
-                return 1.0 / rank
+            expected_clean = expected.strip()
+            if expected_clean:
+                hit_norm = _normalize_numbers(hit)
+                expected_norm = _normalize_numbers(expected_clean)
+                if expected_norm in hit_norm or expected_clean in hit:
+                    return 1.0 / rank
     return 0.0
 
 

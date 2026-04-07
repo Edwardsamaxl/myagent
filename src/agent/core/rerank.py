@@ -374,6 +374,7 @@ class HuggingFaceReranker:
                 self.model_name,
                 device=self.device,
                 max_length=self.max_length,
+                # timeout在predict时处理
             )
             self._healthy = True
             logger.info(f"[HuggingFaceReranker] 模型加载成功: {self.model_name}")
@@ -405,7 +406,7 @@ class HuggingFaceReranker:
         pairs = [[query, doc] for doc in documents]
 
         try:
-            scores = encoder.predict(pairs, show_progress_bar=False)
+            scores = encoder.predict(pairs, show_progress_bar=False, timeout=self.timeout)
         except Exception as exc:
             logger.warning(f"[HuggingFaceReranker] 预测失败: {exc}，跳过重排。")
             return hits, []
@@ -433,15 +434,80 @@ class HuggingFaceReranker:
         return reranked_hits, rerank_breakdown
 
 
-def build_reranker(config: AgentConfig) -> SimpleReranker | BGEReranker | HuggingFaceReranker:
+class CascadeReranker:
+    """两阶段串联重排：规则初筛 → BGE 精排。
+
+    第一阶段 SimpleReranker 用规则快速过滤，返回 2*top_k 候选；
+    第二阶段 BGE Reranker 在候选上做精细排序，输出最终 top_k。
+    """
+
+    def __init__(
+        self,
+        coarse_reranker: SimpleReranker,
+        fine_reranker: BGEReranker | HuggingFaceReranker,
+    ) -> None:
+        self.coarse = coarse_reranker
+        self.fine = fine_reranker
+
+    def rerank(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> list[RetrievalHit]:
+        reranked, _ = self.rerank_with_debug(query=query, hits=hits, top_k=top_k)
+        return reranked
+
+    def rerank_with_debug(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> tuple[list[RetrievalHit], list[dict[str, float | str]]]:
+        if not hits:
+            return [], []
+
+        # 第一阶段：规则初筛，候选数扩大为 2 倍（确保不被 BGE 漏掉）
+        coarse_top_k = max(top_k * 2, 6)
+        coarse_hits, coarse_debug = self.coarse.rerank_with_debug(
+            query=query, hits=hits, top_k=coarse_top_k
+        )
+
+        # 第二阶段：BGE 精排
+        if isinstance(self.fine, BGEReranker) and not self.fine._health_check():
+            logger.warning("[CascadeReranker] BGE 未通过健康检查，仅使用规则结果。")
+            return coarse_hits, coarse_debug
+
+        fine_hits, fine_debug = self.fine.rerank_with_debug(
+            query=query, hits=coarse_hits, top_k=top_k
+        )
+
+        # 合并两阶段 debug：coarse rank → fine rank
+        for item in coarse_debug:
+            item["stage"] = "coarse"
+        for item in fine_debug:
+            item["stage"] = "fine"
+        combined_debug = coarse_debug + fine_debug
+
+        return fine_hits, combined_debug
+
+
+def build_reranker(config: AgentConfig) -> SimpleReranker | BGEReranker | HuggingFaceReranker | CascadeReranker:
     """根据配置构建合适的 reranker。
 
     RERANK_ENABLED=false → SimpleReranker
-    RERANKER_PROVIDER=huggingface → HuggingFaceReranker
-    RERANKER_PROVIDER=ollama → BGEReranker（健康检查失败则降级）
+    rerank_cascade=true + provider=ollama → CascadeReranker(SimpleReranker → BGEReranker)
+    rerank_cascade=true + provider=huggingface → CascadeReranker(SimpleReranker → HuggingFaceReranker)
+    rerank_provider=huggingface → HuggingFaceReranker
+    rerank_provider=ollama → BGEReranker（健康检查失败则降级）
     """
     if not config.rerank_enabled:
         return SimpleReranker()
+
+    # 两阶段串联模式
+    if getattr(config, "rerank_cascade", False):
+        coarse = SimpleReranker()
+        if config.rerank_provider == "huggingface":
+            fine = HuggingFaceReranker(model=config.rerank_model)
+        elif config.rerank_provider == "ollama":
+            fine = BGEReranker(base_url=config.rerank_base_url, model=config.rerank_model)
+        else:
+            fine = BGEReranker(base_url=config.rerank_base_url, model=config.rerank_model)
+        return CascadeReranker(coarse_reranker=coarse, fine_reranker=fine)
 
     if config.rerank_provider == "huggingface":
         return HuggingFaceReranker(model=config.rerank_model)

@@ -10,7 +10,7 @@ from ..core.agent_loop import SimpleAgent
 from ..core.dialogue import SessionMetaStore, classify_intent
 from ..core.dialogue.intent_schema import IntentKind
 from ..core.memory_store import MemoryStore
-from ..core.planning import build_turn_plan
+from ..core.planning import Coordinator, build_turn_plan
 from ..core.planning.langgraph_agent import LangGraphAgent
 from ..core.session_store import SessionStore
 from ..core.skill_store import SkillStore
@@ -45,6 +45,12 @@ class AgentService:
             self.memory_store, self.skill_store, self.config.workspace_dir, rag_service=self.rag
         )
         self.agent = LangGraphAgent(config=self.config, model=self.model, tools=self.tools)
+        # Coordinator（多 Agent 模式）
+        self.coordinator = Coordinator(
+            config=self.config,
+            model=self.model,
+            tools=self.tools,
+        )
 
     def _ensure_dirs(self) -> None:
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
@@ -63,6 +69,20 @@ class AgentService:
         messages.append({"role": "user", "content": user_text})
         messages.append({"role": "assistant", "content": assistant_text})
         self.session_store.set_history(session_id, messages)
+
+    def _should_use_coordinator(self, user_input: str) -> bool:
+        """判断是否使用 Coordinator 模式
+
+        启发式规则：
+        - 问题较长（> 50 字符）
+        - 包含多个关键词（数据、年份、计算等）
+        """
+        if not self.config.use_coordinator:
+            return False
+        return len(user_input) > 50 or any(
+            k in user_input.lower()
+            for k in ["多少", "增长", "同比", "年度", "报告", "计算", "对比", "分析"]
+        )
 
     def chat(
         self,
@@ -105,6 +125,23 @@ class AgentService:
         meta.last_intent = intent.intent.value
         meta.last_plan_summary = plan.summary()
         self.session_meta_store.put(session_id, meta)
+
+        # 检查是否使用 Coordinator 模式
+        if self._should_use_coordinator(turn_text):
+            coord_result = self.coordinator.run(
+                user_input=turn_text,
+                history_messages=history,
+                long_context=self.build_long_context(),
+            )
+            self._append_turn_to_session(session_id, history, user_message, coord_result.answer)
+            return {
+                "answer": coord_result.answer,
+                "steps_used": coord_result.total_steps,
+                "tool_calls": coord_result.tool_calls,
+                "session_id": session_id,
+                "plan_id": coord_result.plan_id,
+                "rag": None,
+            }
 
         result = self.agent.run(
             user_input=turn_text,

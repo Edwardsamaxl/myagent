@@ -52,8 +52,47 @@ Agent 文件路径：`C:/Users/Ed/.claude/agents/<name>.md`
 
 ### 待验证问题
 
-1. **Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常
+1. **Reranker**：✅ 已验证通过（`BAAI/bge-reranker-v2-m3` 加载成功，cross-encoder scores 正确）
 2. **评估数据格式**：`expected_answer` 与 chunk 原文格式不匹配
+
+### Coordinator 多 Agent 协作设计（进行中）
+
+**任务**：设计并实现 Coordinator 模式，支持多 Agent 协作完成任务分解和并行执行。
+
+**设计文档**：`docs/coordinator-design.md`
+
+**架构概览**：
+```
+用户问题 → Coordinator → Planner（分解）→ Workers（并行/串行执行）→ Synthesizer（汇总）→ 回复
+```
+
+**新增模块**：
+| 文件 | 说明 |
+|------|------|
+| `planning/planner.py` | 任务分解（调用 AI 生成 PlanArtifact） |
+| `planning/synthesizer.py` | 结果汇总生成 |
+| `planning/coordinator.py` | 主调度器（处理依赖关系） |
+| `planning/worker_result.py` | Worker 结果数据类 |
+
+**核心设计**：
+- Planner：调用 AI 将用户问题分解为多个步骤（rag、calc、web、synthesize）
+- Coordinator：根据 `depends_on` 关系调度 Workers，支持并行/串行执行
+- Synthesizer：汇总各 Worker 结果生成最终回复
+
+**工具扩展建议**：
+- 建议增加：`search_code`、`list_files`、`read_url`
+- 预留 MCP 扩展接口
+
+**实现优先级**：
+1. 扩展 `plan_schema.py`（PlanStepAction 枚举） - 5 分钟
+2. 新建 `worker_result.py` - 5 分钟
+3. 新建 `planner.py` - 1 小时
+4. 新建 `synthesizer.py` - 30 分钟
+5. 新建 `coordinator.py` - 2 小时
+6. 改造 `agent_service.py` - 30 分钟
+7. 测试和调优 - 1 小时
+
+**预计工作量**：约 5 小时
 
 ---
 
@@ -136,7 +175,7 @@ Agent 文件路径：`C:/Users/Ed/.claude/agents/<name>.md`
 #### 2. sentence-transformers / PyTorch 版本
 **问题**：scoop 全局 Python 的 PyTorch 2.2 太旧，导致 transformers 5.4 报错
 **注意**：用户用 `ai_env` 环境跑，`torch` 是 2.5.1，不应该有问题
-**验证**：在 `ai_env` 中直接测试 `from sentence_transformers import CrossEncoder`
+**验证**：✅ 已在全局环境验证通过（torch 2.5.1+cu121, sentence-transformers 5.3.0）
 
 #### 3. 评估数据格式
 **问题**：`expected_answer = "170899152276.34元或约1709亿元"` 但 chunk 里是"1709亿元"（不同格式），导致 recall=0
@@ -166,10 +205,9 @@ src/agent/
 
 ### 下一步顺序
 
-1. **测试 Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常工作
-2. **修复评估数据格式**：统一 expected_answer 与 chunk 原文的格式
-3. **跑 eval_retrieval.py**：验证 reranker + 评估框架
-4. **commit 所有修复**
+1. **修复评估数据格式**：统一 expected_answer 与 chunk 原文的格式
+2. **跑 eval_retrieval.py**：验证 reranker + 评估框架
+3. **commit 所有修复**
 
 ---
 

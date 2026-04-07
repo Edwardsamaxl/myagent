@@ -48,7 +48,7 @@ class RagAgentService:
                 logging.warning(
                     f"[RAG] Embedding provider 不可用，降级为纯词频检索。 "
                     f"原因: {exc}。 "
-                    f"修复建议: 确认 Ollama 已运行 'ollama pull nomic-embed-text'，"
+                    f"修复建议: 确认 Ollama 已运行 'ollama pull qwen3-embedding'，"
                     f"或配置 EMBEDDING_PROVIDER=mock 使用 mock 模式。"
                 )
         else:
