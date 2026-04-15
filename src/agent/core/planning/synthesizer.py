@@ -33,11 +33,22 @@ class Synthesizer:
         user_input: str,
         plan: PlanArtifact,
         worker_results: dict[str, WorkerResult],
+        rag_hits: list[dict] | None = None,
     ) -> str:
         """根据计划和各 worker 结果生成最终回复"""
 
         # 构建汇总上下文
         context_parts = []
+
+        # 如果有预取的 RAG hits，先加入上下文
+        if rag_hits:
+            from ...core.evidence_format import format_evidence_block_from_api_dicts
+
+            evidence_block = format_evidence_block_from_api_dicts(rag_hits)
+            context_parts.append(
+                f"【预检索的证据】（来自 AgentService 层，已包含以下文档内容，无需重复检索）\n{evidence_block}"
+            )
+
         for step in plan.steps:
             if step.id in worker_results:
                 result = worker_results[step.id]

@@ -1,226 +1,68 @@
-# MEMORY
+# 项目记忆
 
-## 用户偏好
-- 用户信任我的判断，可在说明方案后直接执行
-- 用户配置了丰富的 agent 库在 `C:/Users/Ed/.claude/agents/`，工作时按需加载
+## 项目概述
+**Fin-agent**: 面向金融场景的 RAG + Agent 项目。
+目标：展示 RAG pipeline 优化能力、Agent 架构设计能力、工程实现能力。
 
-## 可用 Agent 索引
+## 技术栈
+- **Embedding**: `qwen3-embedding` (4096维, ollama) → 降级时自动切纯词频
+- **检索**: 混合检索 lexical + tfidf + embedding + numeric（RRF / weighted_sum 可配）
+- **重排**: HuggingFaceReranker (CrossEncoder, apply_softmax=True)
+- **生成**: GroundedGenerator（基于证据生成 + 拒答）
+- **Agent**: agent_loop.py（带 PLANNER_PROMPT + plan: 思考链 + MAX_LOOP_TURNS）
+- **LLM**: anthropic_compatible (MiniMax-M2.7 via api.minimaxi.com)
+- **Embedding Provider**: openai_compatible / ollama（支持 fallback）
 
-工作时遇到以下类型任务，读取对应 agent 文件并以其角色执行：
-
-| 任务类型 | Agent 文件 | 用途 |
-|---------|-----------|------|
-| AI/ML/RAG/LLM | `engineering-ai-engineer.md` | 模型、向量检索、ML系统 |
-| 代码审查 | `engineering-code-reviewer.md` | 安全、正确性、可维护性 |
-| 系统架构/DDD | `engineering-software-architect.md` | 架构决策、ADRs、边界设计 |
-
-Agent 文件路径：`C:/Users/Ed/.claude/agents/<name>.md`
-
----
-
-## 2026-04-04 工作记录
-
-### Tool-calling 修复（已验证通过）✅
-
-**问题**：`ModelProviderWrapper._generate` 中 `self._bound_tools` 未传递给 API，且 `generate()` 返回纯文本丢失 tool_use 信息。
-
-**修复**（涉及 3 个文件）：
-
-1. **`src/agent/llm/providers.py`**
-   - `ModelProvider.generate()` 添加 `tools` 参数
-   - `_HTTPChatProvider.generate()` 添加 `tools` 参数
-   - `OpenAICompatibleProvider._build_payload()` 支持 tools
-   - `AnthropicCompatibleProvider._build_payload()` 支持 tools
-   - `OllamaProvider.generate()` 支持 tools
-   - `MockProvider.generate()` 支持 tools
-   - 新增 `generate_raw()` 方法返回完整 API 响应
-
-2. **`src/agent/core/planning/langgraph_agent.py`**
-   - `_generate()` 使用 `generate_raw()` 获取原始响应
-   - 正确解析 `tool_use` 并构建 LangChain `ToolCall`
-   - 使用 `AIMessage(tool_calls=[...])` 格式
-
-3. **`src/agent/tools/registry.py`**
-   - `get_time()`: `(_: str)` → `()`
-   - `read_memory()`: `(_: str)` → `()`
-   - `list_skills()`: `(_: str)` → `()`
-
-**验证结果**：
-- `get_time`: Answer = "当前时间是 **2026年4月4日 14:24:57**", Steps = 1
-- `calculate`: Answer = "20", Steps = 3
-- `read_memory`: 正确读取记忆文件内容, Steps = 1
-
-### 待验证问题
-
-1. **Reranker**：✅ 已验证通过（`BAAI/bge-reranker-v2-m3` 加载成功，cross-encoder scores 正确）
-2. **评估数据格式**：`expected_answer` 与 chunk 原文格式不匹配
-
-### Coordinator 多 Agent 协作设计（进行中）
-
-**任务**：设计并实现 Coordinator 模式，支持多 Agent 协作完成任务分解和并行执行。
-
-**设计文档**：`docs/coordinator-design.md`
-
-**架构概览**：
-```
-用户问题 → Coordinator → Planner（分解）→ Workers（并行/串行执行）→ Synthesizer（汇总）→ 回复
-```
-
-**新增模块**：
-| 文件 | 说明 |
+## 关键文件
+| 文件 | 作用 |
 |------|------|
-| `planning/planner.py` | 任务分解（调用 AI 生成 PlanArtifact） |
-| `planning/synthesizer.py` | 结果汇总生成 |
-| `planning/coordinator.py` | 主调度器（处理依赖关系） |
-| `planning/worker_result.py` | Worker 结果数据类 |
+| `src/agent/core/retrieval.py` | 混合检索核心（lexical/tfidf/embedding + numeric数字通道 + set_weights动态调权） |
+| `src/agent/core/rerank.py` | 重排（HuggingFaceReranker） |
+## 路由测试套件 (2026-04-12)
+| 文件 | 作用 |
+|------|------|
+| `tests/unit/test_routing_intent_classifier.py` | 路由测试：101 tests（intent分类/router决策/multi_agent链路/问题数据集） |
+| `tests/ROUTING_TESTS_README.md` | 测试指南，供其他 agent 查阅 |
+| `tests/unit/test_agent_router.py` | 原有 router 测试：17 tests |
 
-**核心设计**：
-- Planner：调用 AI 将用户问题分解为多个步骤（rag、calc、web、synthesize）
-- Coordinator：根据 `depends_on` 关系调度 Workers，支持并行/串行执行
-- Synthesizer：汇总各 Worker 结果生成最终回复
+**路由链路**: Query → classify_intent() → AgentRouter.decide() → Route(ReAct/Coordinator/Clarify) → Coordinator.run() → Worker.execute() → Synthesizer
 
-**工具扩展建议**：
-- 建议增加：`search_code`、`list_files`、`read_url`
-- 预留 MCP 扩展接口
+**IntentTier**: TOOL_ONLY / KNOWLEDGE / MIXED / CHITCHAT / AMBIGUOUS / OOS
+| `src/agent/core/agent_loop.py` | Agent规划层（PLANNER_PROMPT + plan:思考链 + MAX_LOOP_TURNS + 工具错误处理） |
+| `src/agent/core/dialogue/query_rewrite.py` | 查询改写（rule/llm/hybrid/hyde/expand/hyde_expand 模式） |
+| `src/agent/service/agent_service.py` | chat入口（RAG在agent.run()前调用，retrieval_hits统一注入） |
+| `scripts/eval_retrieval.py` | 检索评估脚本 |
+| `data/eval/eval_records/retrieval_results.jsonl` | 评估结果 |
 
-**实现优先级**：
-1. 扩展 `plan_schema.py`（PlanStepAction 枚举） - 5 分钟
-2. 新建 `worker_result.py` - 5 分钟
-3. 新建 `planner.py` - 1 小时
-4. 新建 `synthesizer.py` - 30 分钟
-5. 新建 `coordinator.py` - 2 小时
-6. 改造 `agent_service.py` - 30 分钟
-7. 测试和调优 - 1 小时
+## 当前 Recall@3: 0.36
+- ✅ 实体类（股票代码、公司名、地址）: 100%
+- ✅ 重大事项类（会计师事务所、董事会秘书）: 良好
+- ❌ 数值类（营业收入、净利润、每股收益）: recall=0（根因：单位不匹配，元 vs 万元）
 
-**预计工作量**：约 5 小时
+## 已解决问题
+1. ✅ 数值召回通道：`_extract_numbers` + `_numeric_score` + `numeric_weight` + `QueryTypeClassifier`
+2. ✅ Agent规划层：`agent_loop.py` 带 PLANNER_PROMPT + plan:思考链
+3. ✅ RAG↔Agent桥接：`agent_service.py` 重构，RAG在agent.run()前调用
+4. ✅ Query Rewrite增强：HyDE / Multi-Query / HyDE+Expand 模式
 
----
+## 待解决问题
+1. **P1**: 数值类recall=0根因：单位不匹配（expected=元，chunk=万元），可在query rewrite时规范化数字单位
+2. **P1**: MiniMax API 当前可能500，等恢复
 
-## 2026-04-03 工作记录
+## 文档
+- `docs/RAG_CHAIN_FIX_REPORT_2026-04-08.md` - 昨日修复详情
+- `docs/RAG_AGENT_FIX_PLAN_2026-04-09.md` - 今日计划与进度
+- `docs/thesis/00-thesis-structure.md` - 论文结构（用户撰写中）
 
-### 今日修复（已验证通过）
-
-#### 1. LangGraph 兼容性错误 ✅
-**问题**：Web UI 返回"服务内部错误"，错误为 `AttributeError: 'list' object has no attribute 'message'`
-**根因**：`ModelProviderWrapper._generate` 返回 `LLMResult(generations=[[chat_gen]])`（2层嵌套），但 LangChain 内部期望 `ChatResult(generations=[chat_gen])`（1层）
-**修复**：
-- `langgraph_agent.py` 第 54 行：导入从 `LLMResult` 改为 `ChatResult`
-- `langgraph_agent.py` 第 80 行：返回类型从 `LLMResult` 改为 `ChatResult`
-- `langgraph_agent.py` 第 95 行：`generations` 格式从 `[[chat_gen]]` 改为 `[chat_gen]`
-
-#### 2. 消息对象类型错误 ✅
-**问题**：`session_store.set_history()` 期望 `dict`，但收到 `SystemMessage` 等 LangChain 对象
-**修复**：`langgraph_agent.py` 的 `run()` 方法中添加 `msg_to_dict()` 转换函数
-
-#### 3. 流式接口 `split("")` bug ✅
-**问题**：`web_app.py` 第 244 行 `answer.split("")` 导致 `ValueError: empty separator`
-**修复**：改为直接遍历字符 `for i, ch in enumerate(answer):`
-
-### 当前状态
-- Web UI：`/api/chat` 和 `/api/chat/stream` 均返回 200 OK
-- API 认证：正常工作 (MiniMax-M2.7)
-- 工具调用：**已验证通过**（2026-04-04）
-
-### 待验证问题
-1. **Tool-calling 功能**：✅ 已修复并验证
-2. **Reranker**：`HuggingFaceReranker` 在 `ai_env` 中是否正常
-
----
-
-## 2026-03-31 工作记录
-
-### 已完成
-
-#### P0: LangGraph ReAct Agent（feature/langgraph-agent → merged to main）
-- 新文件：`planning/state.py`、`planning/nodes.py`、`planning/agent_graph.py`、`planning/langgraph_agent.py`
-- `ModelProviderWrapper`：将项目 `ModelProvider`（支持 anthropic_compatible）适配为 LangChain `BaseChatModel`
-- `LangGraphAgent`：封装 `create_react_agent`，支持 MiniMax-M2.7 native tool-calling
-- `AgentService`：SimpleAgent → LangGraphAgent
-- **状态**：代码已 merge，但有兼容性问题（见下方"未解决问题"）
-
-#### P1: BGE Reranker（feature/reranker → merged to main）
-- 新增 `HuggingFaceReranker`：基于 `sentence-transformers` 的 CrossEncoder，模型 `BAAI/bge-reranker-v2-m3`
-- 新增 `BGEReranker`：Ollama `/api/rerank` 版本（实验性）
-- `build_reranker()` 工厂：支持 `huggingface` / `ollama` provider
-- config 新增：`rerank_enabled`、`rerank_provider`、`rerank_model`
-- **状态**：代码已 merge，但 sentence-transformers 环境问题未解决
-
-#### P2: 评估指标体系（feature/eval-framework → merged to main）
-- `recall_at_k`、`hit_rate_at_k`、`mean_reciprocal_rank`
-- `GroundednessEvaluator`、`RelevanceEvaluator`（LLM-based）
-- `scripts/eval_retrieval.py`、`scripts/run_ablation.py`
-- `data/eval/retrieval_test_set.json`（25 条贵州茅台标注问答）
-- **状态**：框架代码完整，评估数据格式有问题（expected_answer 与 chunk 原文格式不匹配）
-
-#### 模型信息更新
-- CLAUDE.md：`MODEL_PROVIDER=anthropic_compatible`（MiniMax-M2.7），非 ollama/qwen
-- MiniMax-M2.7 支持 Anthropic-compatible tool-calling（已测试验证）
-
-#### 环境修复
-- requirements.txt 新增：`langgraph>=0.2.0`、`sentence-transformers>=3.0.0`
-- 解决了 3 个版本兼容问题：
-  1. `@langchain_tool(name=...)` → `StructuredTool.from_function()`
-  2. `create_react_agent(max_iterations=)` → 移除该参数
-  3. `AgentState` 新增 `remaining_steps` 字段
-
----
-
-### 未解决问题
-
-#### 1. Tool-calling 功能未验证（需测试）
-**问题**：`ModelProviderWrapper._generate` 中 `self._inner.generate()` 没有传递 `tools` 参数给 API
-**当前状态**：`self._bound_tools` 存储了工具定义，但 API 调用时未注入
-**影响**：Agent 无法调用工具，只能生成文本
-
-#### 2. sentence-transformers / PyTorch 版本
-**问题**：scoop 全局 Python 的 PyTorch 2.2 太旧，导致 transformers 5.4 报错
-**注意**：用户用 `ai_env` 环境跑，`torch` 是 2.5.1，不应该有问题
-**验证**：✅ 已在全局环境验证通过（torch 2.5.1+cu121, sentence-transformers 5.3.0）
-
-#### 3. 评估数据格式
-**问题**：`expected_answer = "170899152276.34元或约1709亿元"` 但 chunk 里是"1709亿元"（不同格式），导致 recall=0
-**修复**：调整 `retrieval_test_set.json` 里的 `expected_answers`，使用 chunk 里会实际出现的格式
-
----
-
-### 项目当前架构
-
+## 配置关键
+```env
+RETRIEVAL_LEXICAL_WEIGHT=0.35
+RETRIEVAL_TFIDF_WEIGHT=0.25
+RETRIEVAL_EMBEDDING_WEIGHT=0.40   # embedding不可用时自动降级
+RETRIEVAL_NUMERIC_WEIGHT=0.0     # 可设0.1-0.3启用数值通道
+RETRIEVAL_TOP_K=6
+RERANK_TOP_K=3
+SPARSE_MODE=tfidf  # 或 bm25 / tfidf_bm25
+FUSION_MODE=weighted_sum  # 或 rrf
+MAX_LOOP_TURNS=3  # Agent规划层循环上限
 ```
-src/agent/
-├── core/
-│   ├── planning/
-│   │   ├── state.py          # AgentState (remaining_steps, messages, ...)
-│   │   ├── nodes.py          # _make_langchain_tools → StructuredTool
-│   │   ├── agent_graph.py    # build_agent_graph + run_agent (create_react_agent)
-│   │   ├── langgraph_agent.py # LangGraphAgent + ModelProviderWrapper
-│   │   ├── plan_schema.py
-│   │   └── planner.py
-│   ├── rerank.py             # SimpleReranker + BGEReranker + HuggingFaceReranker
-│   ├── retrieval.py          # InMemoryHybridRetriever (已支持持久化)
-│   ├── evaluation.py          # recall_at_k / hit_rate_at_k / mrr / GroundednessEvaluator
-│   └── schemas.py
-└── application/
-    └── agent_service.py       # AgentService → LangGraphAgent (已修复)
-```
-
-### 下一步顺序
-
-1. **修复评估数据格式**：统一 expected_answer 与 chunk 原文的格式
-2. **跑 eval_retrieval.py**：验证 reranker + 评估框架
-3. **commit 所有修复**
-
----
-
-## 重要决策记录
-
-- MiniMax-M2.7 使用 **Anthropic-compatible tool-calling**（非 ReAct 字符串解析）
-- ReAct vs Tool-calling：选 Tool-calling（MiniMax 支持，效率更高）
-- Reranker：选 **HuggingFace CrossEncoder**（`BAAI/bge-reranker-v2-m3`），不用 Ollama（Ollama 的 `/api/rerank` 只支持官方模型）
-- embedding 模型：`qwen3-embedding`（4096 维，Ollama pull）
-
-## 长期目标
-
-面向算法工程师实习面试的 RAG+Agent 项目，展示：
-- RAG pipeline 优化能力（混合检索 + Rerank）
-- Agent 架构设计能力（状态机 + 工具调用）
-- 工程化落地能力（模块化 + 可观测 + 评估体系）

@@ -1,0 +1,602 @@
+from __future__ import annotations
+
+import logging
+import os
+import re
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+import requests
+
+from ..config import AgentConfig
+from .retrieval import _tokenize
+from .schemas import RetrievalHit
+
+logger = logging.getLogger(__name__)
+
+
+class SimpleReranker:
+    """Rerank v2: 基础分 + keyword/length/metadata/numeric 规则，与 retrieval 形成 recall+rerank 分层。"""
+
+    def rerank(self, query: str, hits: list[RetrievalHit], top_k: int = 3) -> list[RetrievalHit]:
+        reranked, _ = self.rerank_with_debug(query=query, hits=hits, top_k=top_k)
+        return reranked
+
+    def rerank_with_debug(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> tuple[list[RetrievalHit], list[dict[str, float | str]]]:
+        if not hits:
+            return [], []
+        keyword_on = _env_bool("RERANK_KEYWORD_BONUS_ENABLED", True)
+        length_penalty_on = _env_bool("RERANK_LENGTH_PENALTY_ENABLED", True)
+        metadata_on = _env_bool("RERANK_METADATA_BONUS_ENABLED", True)
+        numeric_on = _env_bool("RERANK_NUMERIC_BONUS_ENABLED", True)
+        keyword_unit_bonus = 0.015
+        length_penalty_value = 0.05
+        query_tokens = set(_tokenize(query))
+        query_nums = self._extract_numbers(query)
+        constraints = self._extract_query_constraints(query)
+
+        scored: list[tuple[RetrievalHit, float, dict[str, float | str]]] = []
+        for hit in hits:
+            final_score, breakdown = self._score_hit(
+                query=query,
+                hit=hit,
+                query_tokens=query_tokens,
+                query_nums=query_nums,
+                constraints=constraints,
+                keyword_on=keyword_on,
+                keyword_unit_bonus=keyword_unit_bonus,
+                length_penalty_on=length_penalty_on,
+                length_penalty_value=length_penalty_value,
+                metadata_on=metadata_on,
+                numeric_on=numeric_on,
+            )
+            scored.append((hit, final_score, breakdown))
+
+        # 排序稳定性：先按 final，再按 base，再按 chunk_id，保证 C 侧消费顺序可复现。
+        scored.sort(
+            key=lambda item: (
+                item[1],
+                float(item[2].get("base", 0.0)),
+                str(item[0].chunk_id),
+            ),
+            reverse=True,
+        )
+        picked = scored[: max(1, top_k)]
+        reranked_hits = [item[0] for item in picked]
+        rerank_breakdown: list[dict[str, float | str]] = []
+        for idx, item in enumerate(picked, start=1):
+            row = dict(item[2])
+            row["rank"] = str(idx)
+            rerank_breakdown.append(row)
+        return reranked_hits, rerank_breakdown
+
+    def _score_hit(
+        self,
+        *,
+        query: str,
+        hit: RetrievalHit,
+        query_tokens: set[str],
+        query_nums: set[str],
+        constraints: dict[str, object],
+        keyword_on: bool,
+        keyword_unit_bonus: float,
+        length_penalty_on: bool,
+        length_penalty_value: float,
+        metadata_on: bool,
+        numeric_on: bool,
+    ) -> tuple[float, dict[str, float | str]]:
+        base = hit.score
+        if keyword_on:
+            keyword_bonus = sum(keyword_unit_bonus for t in query_tokens if t and t in hit.text.lower())
+        else:
+            keyword_bonus = 0.0
+        intent_bonus = self._intent_bonus(query, hit.text)
+        if length_penalty_on:
+            length_penalty = 0.0 if 120 <= len(hit.text) <= 800 else length_penalty_value
+        else:
+            length_penalty = 0.0
+        metadata_bonus = (
+            self._metadata_bonus(query, hit.metadata, constraints)
+            if metadata_on
+            else 0.0
+        )
+        numeric_bonus = self._numeric_bonus(query_nums, hit.text) if numeric_on else 0.0
+        lexical_score = keyword_bonus + intent_bonus
+        semantic_score = base + metadata_bonus + numeric_bonus
+        final_score = semantic_score + lexical_score - length_penalty
+        breakdown: dict[str, float | str] = {
+            "chunk_id": hit.chunk_id,
+            "source": hit.source,
+            "base": round(base, 6),
+            "lexical": round(lexical_score, 6),
+            "semantic": round(semantic_score, 6),
+            "length_penalty": round(length_penalty, 6),
+            "final": round(final_score, 6),
+        }
+        return final_score, breakdown
+
+    @staticmethod
+    def _metadata_bonus(query: str, metadata: dict[str, str], constraints: dict[str, object]) -> float:
+        """从 retrieval 迁入：date/doc_type 软约束；可选 company 匹配。"""
+        if not metadata:
+            return 0.0
+        q = query
+        bonus = 0.0
+        years = constraints.get("years", set())
+        date_val = metadata.get("date", "")
+        if years and date_val:
+            if any(y in date_val for y in years):
+                bonus += 0.05
+            else:
+                bonus -= 0.05
+
+        # doc_type：半年报 / 年报
+        bonus += SimpleReranker._doc_type_bonus(
+            doc_type=metadata.get("doc_type", ""),
+            expect_doc_type=str(constraints.get("doc_type", "")),
+            is_profile_query=bool(constraints.get("is_profile_query", False)),
+        )
+
+        # 可选：company 与 query 主体匹配
+        company = metadata.get("company", "")
+        if company and company in q:
+            bonus += 0.03
+
+        return bonus
+
+    @staticmethod
+    def _doc_type_bonus(*, doc_type: str, expect_doc_type: str, is_profile_query: bool) -> float:
+        if expect_doc_type:
+            return 0.05 if expect_doc_type in doc_type else -0.08
+        if not is_profile_query:
+            return 0.0
+        # 公司基本面无显式年份时，优先年报，抑制半年报误命中。
+        if "年报" in doc_type:
+            return 0.08
+        if "半年报" in doc_type:
+            return -0.08
+        return 0.0
+
+    @staticmethod
+    def _extract_query_constraints(query: str) -> dict[str, object]:
+        years = set(re.findall(r"\b(?:19|20)\d{2}\b", query))
+        if not years:
+            years = set(re.findall(r"(?:19|20)\d{2}", query))
+        doc_type = ""
+        if "半年报" in query or "上半年" in query:
+            doc_type = "半年报"
+        elif "年报" in query or "年度报告" in query:
+            doc_type = "年报"
+        profile_keys = ("法定代表人", "注册地址", "董事会秘书", "会计师事务所", "办公地址")
+        is_profile_query = any(k in query for k in profile_keys)
+        return {
+            "years": years,
+            "doc_type": doc_type,
+            "is_profile_query": is_profile_query,
+        }
+
+    @staticmethod
+    def _intent_bonus(query: str, chunk_text: str) -> float:
+        # 对高价值短语做精确匹配，帮助同源文档中的实体字段优先。
+        anchors = ("法定代表人", "注册地址", "董事会秘书", "会计师事务所", "营业收入", "变动原因")
+        bonus = 0.0
+        for phrase in anchors:
+            if phrase in query and phrase in chunk_text:
+                bonus += 0.04
+        return bonus
+
+    @staticmethod
+    def _extract_numbers(text: str) -> set[str]:
+        """提取 query 中的数字（股票代码、金额、比率等），用于 numeric_bonus。"""
+        nums: set[str] = set()
+        # 整数（含 6 位股票代码、4 位年份等）
+        for m in re.finditer(r"\d+", text):
+            nums.add(m.group())
+        # 小数、比率（如 15.71、12.5%）
+        for m in re.finditer(r"\d+\.\d+%?|\d+%", text):
+            nums.add(m.group())
+        return nums
+
+    @staticmethod
+    def _numeric_bonus(query_nums: set[str], chunk_text: str) -> float:
+        """query 中数字在 chunk 文本中出现，+0.04/类，每类最多一次。"""
+        if not query_nums:
+            return 0.0
+        bonus = 0.0
+        for num in query_nums:
+            if num in chunk_text:
+                bonus += 0.04
+        return bonus
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    val = os.getenv(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+@dataclass
+class RerankResult:
+    """BGE Reranker 返回的单个重排结果。"""
+    hit: RetrievalHit
+    rerank_score: float
+
+
+class BGEReranker:
+    """基于 Ollama BGE Reranker v2-m3 的文档重排序。
+
+    使用 /api/generate 接口，通过 prompt 让模型输出每个候选的相关性评分。
+
+    部署要求：
+        ollama pull dengcao/bge-reranker-v2-m3
+
+    API：POST /api/generate
+        {
+          "model": "dengcao/bge-reranker-v2-m3",
+          "prompt": "重排序以下内容，查询：xxx，候选：[...]",
+          "stream": false
+        }
+
+    模型会返回类似格式：候选1: 0.92, 候选2: 0.85 ...
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model: str = "dengcao/bge-reranker-v2-m3",
+        timeout: int = 60,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self.timeout = timeout
+        self._healthy = True
+        self._health_checked = False
+
+    def _health_check(self) -> bool:
+        """启动时验证 Ollama generate API 是否可用，且响应内容可解析。"""
+        if self._health_checked:
+            return self._healthy
+        self._health_checked = True
+        try:
+            # 用最短的 query + 2 个 doc 验证连通性和响应格式
+            resp = requests.post(
+                f"{self.base_url}/api/generate",
+                json={
+                    "model": self.model,
+                    "prompt": "重排序以下内容，查询：天气，候选：[\"今天晴天\", \"明天阴天\"]",
+                    "stream": False,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            response_text = resp.json().get("response", "")
+
+            # 检查响应是否包含有效内容（不是乱码或 <unk>）
+            if not response_text or "<unk>" in response_text or len(response_text.strip()) < 5:
+                logger.warning(
+                    f"[BGEReranker] 健康检查失败：模型返回无效内容 (可能是模型格式不正确)。"
+                    f"响应: {response_text[:100]}"
+                )
+                self._healthy = False
+                return False
+
+            # 检查是否包含可解析的评分模式
+            score_map = self._parse_scores(response_text, 2)
+            if not score_map:
+                logger.warning(
+                    f"[BGEReranker] 健康检查失败：无法解析评分响应。"
+                    f"响应: {response_text[:100]}"
+                )
+                self._healthy = False
+                return False
+
+            self._healthy = True
+        except Exception as exc:
+            self._healthy = False
+            logger.warning(
+                "[BGEReranker] 健康检查失败，将降级为 SimpleReranker。"
+                f"原因: {exc}。"
+                "修复: 确认已运行 'ollama pull dengcao/bge-reranker-v2-m3'。"
+            )
+        return self._healthy
+
+    def _parse_scores(self, response_text: str, num_docs: int) -> dict[int, float]:
+        """解析模型返回的评分文本，返回 {index: score} 映射。"""
+        scores: dict[int, float] = {}
+        # 尝试匹配 "候选X: score" 或 "candidateX: score" 格式
+        import re
+
+        # 匹配模式：候选1: 0.92 或 候选1:0.92 或 1: 0.92
+        patterns = [
+            r"候选(\d+)[:：]\s*([\d.]+)",
+            r"candidate(\d+)[:：]\s*([\d.]+)",
+            r"(\d+)[:：]\s*([\d.]+)",
+        ]
+        for pattern in patterns:
+            matches = re.findall(pattern, response_text)
+            for m in matches:
+                idx = int(m[0]) - 1  # 转换为 0-based
+                score = float(m[1])
+                if 0 <= idx < num_docs:
+                    scores[idx] = score
+            if scores:
+                break
+
+        # 如果没匹配到，尝试直接用 eval 解析冒号分隔的格式
+        if not scores:
+            for line in response_text.split("\n"):
+                line = line.strip()
+                if ":" in line or "：" in line:
+                    parts = re.split(r"[:：]", line)
+                    if len(parts) >= 2:
+                        try:
+                            idx_part = parts[0].strip()
+                            score_part = parts[1].strip().split()[0]
+                            # 尝试提取数字
+                            idx_match = re.search(r"\d+", idx_part)
+                            score_match = re.search(r"[\d.]+", score_part)
+                            if idx_match and score_match:
+                                idx = int(idx_match.group()) - 1
+                                score = float(score_match.group())
+                                if 0 <= idx < num_docs:
+                                    scores[idx] = score
+                        except (ValueError, IndexError):
+                            continue
+
+        return scores
+
+    def rerank(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> list[RetrievalHit]:
+        reranked, _ = self.rerank_with_debug(query=query, hits=hits, top_k=top_k)
+        return reranked
+
+    def rerank_with_debug(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> tuple[list[RetrievalHit], list[dict[str, float | str]]]:
+        if not hits:
+            return [], []
+
+        if not self._health_check():
+            logger.warning("[BGEReranker] 未通过健康检查，降级为 SimpleReranker。")
+            return hits, []
+
+        documents = [hit.text for hit in hits]
+
+        try:
+            # 构建 prompt，让模型输出每个候选的评分
+            import json
+
+            prompt = f"重排序以下内容，查询：{query}，候选：{json.dumps(documents, ensure_ascii=False)}"
+            resp = requests.post(
+                f"{self.base_url}/api/generate",
+                json={"model": self.model, "prompt": prompt, "stream": False},
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            response_text = resp.json().get("response", "")
+
+            # 解析评分
+            score_map = self._parse_scores(response_text, len(hits))
+
+            # 如果解析失败，使用原始分数
+            if not score_map:
+                logger.warning(f"[BGEReranker] 无法解析评分响应: {response_text}，使用原始检索分数。")
+                score_map = {i: hits[i].score for i in range(len(hits))}
+
+        except requests.RequestException as exc:
+            logger.warning(f"[BGEReranker] API 调用失败: {exc}，跳过重排。")
+            return hits, []
+
+        # 按 score 降序排列
+        sorted_indices = sorted(
+            range(len(hits)),
+            key=lambda i: score_map.get(i, 0.0),
+            reverse=True,
+        )
+
+        reranked_hits = [hits[i] for i in sorted_indices[:top_k]]
+        rerank_breakdown: list[dict[str, float | str]] = []
+        for rank, idx in enumerate(sorted_indices[:top_k], start=1):
+            rerank_breakdown.append({
+                "chunk_id": hits[idx].chunk_id,
+                "source": hits[idx].source,
+                "rerank_score": round(score_map.get(idx, 0.0), 6),
+                "original_rank": str(idx + 1),
+                "new_rank": str(rank),
+            })
+
+        return reranked_hits, rerank_breakdown
+
+
+class HuggingFaceReranker:
+    """基于 HuggingFace sentence-transformers CrossEncoder 的文档重排序。
+
+    使用 cross-encoder 架构，将 query + passage 一起编码，
+    输出相关度分数，按分数降序排列。
+
+    部署要求：
+        pip install sentence-transformers
+
+    模型列表（中文效果好）：
+        - "BAAI/bge-reranker-v2-m3"（推荐，Qwen3 训练，中文最优）
+        - "BAAI/bge-reranker-base-v2-m3"
+    """
+
+    def __init__(
+        self,
+        model: str = "BAAI/bge-reranker-v2-m3",
+        device: str = "cpu",
+        max_length: int = 512,
+        timeout: int = 30,
+    ) -> None:
+        self.model_name = model
+        self.device = device
+        self.max_length = max_length
+        self.timeout = timeout
+        self._encoder: Any = None
+        self._healthy = True
+
+    def _load(self) -> Any:
+        """懒加载模型，首次使用时才加载。"""
+        if self._encoder is not None:
+            return self._encoder
+        try:
+            from sentence_transformers import CrossEncoder
+            self._encoder = CrossEncoder(
+                self.model_name,
+                device=self.device,
+                max_length=self.max_length,
+                # timeout在predict时处理
+            )
+            self._healthy = True
+            logger.info(f"[HuggingFaceReranker] 模型加载成功: {self.model_name}")
+            return self._encoder
+        except ImportError:
+            logger.warning("[HuggingFaceReranker] 未安装 sentence-transformers，请运行: pip install sentence-transformers")
+            self._healthy = False
+            raise
+        except Exception as exc:
+            self._healthy = False
+            logger.warning(f"[HuggingFaceReranker] 模型加载失败: {exc}")
+            raise
+
+    def rerank(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> list[RetrievalHit]:
+        reranked, _ = self.rerank_with_debug(query=query, hits=hits, top_k=top_k)
+        return reranked
+
+    def rerank_with_debug(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> tuple[list[RetrievalHit], list[dict[str, float | str]]]:
+        if not hits:
+            return [], []
+
+        encoder = self._load()
+
+        documents = [hit.text for hit in hits]
+        pairs = [[query, doc] for doc in documents]
+
+        try:
+            scores = encoder.predict(pairs, show_progress_bar=False, apply_softmax=True)
+        except Exception as exc:
+            logger.warning(f"[HuggingFaceReranker] 预测失败: {exc}，跳过重排。")
+            return hits, []
+
+        if hasattr(scores, "tolist"):
+            scores = scores.tolist()
+
+        sorted_indices = sorted(
+            range(len(hits)),
+            key=lambda i: float(scores[i]),
+            reverse=True,
+        )
+
+        reranked_hits = [hits[i] for i in sorted_indices[:top_k]]
+        rerank_breakdown: list[dict[str, float | str]] = []
+        for rank, idx in enumerate(sorted_indices[:top_k], start=1):
+            rerank_breakdown.append({
+                "chunk_id": hits[idx].chunk_id,
+                "source": hits[idx].source,
+                "rerank_score": round(float(scores[idx]), 6),
+                "original_rank": str(idx + 1),
+                "new_rank": str(rank),
+            })
+
+        return reranked_hits, rerank_breakdown
+
+
+class CascadeReranker:
+    """两阶段串联重排：规则初筛 → BGE 精排。
+
+    第一阶段 SimpleReranker 用规则快速过滤，返回 2*top_k 候选；
+    第二阶段 BGE Reranker 在候选上做精细排序，输出最终 top_k。
+    """
+
+    def __init__(
+        self,
+        coarse_reranker: SimpleReranker,
+        fine_reranker: BGEReranker | HuggingFaceReranker,
+    ) -> None:
+        self.coarse = coarse_reranker
+        self.fine = fine_reranker
+
+    def rerank(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> list[RetrievalHit]:
+        reranked, _ = self.rerank_with_debug(query=query, hits=hits, top_k=top_k)
+        return reranked
+
+    def rerank_with_debug(
+        self, query: str, hits: list[RetrievalHit], top_k: int = 3
+    ) -> tuple[list[RetrievalHit], list[dict[str, float | str]]]:
+        if not hits:
+            return [], []
+
+        # 第一阶段：规则初筛，候选数扩大为 2 倍（确保不被 BGE 漏掉）
+        coarse_top_k = max(top_k * 2, 6)
+        coarse_hits, coarse_debug = self.coarse.rerank_with_debug(
+            query=query, hits=hits, top_k=coarse_top_k
+        )
+
+        # 第二阶段：BGE 精排
+        if isinstance(self.fine, BGEReranker) and not self.fine._health_check():
+            logger.warning("[CascadeReranker] BGE 未通过健康检查，仅使用规则结果。")
+            return coarse_hits, coarse_debug
+
+        fine_hits, fine_debug = self.fine.rerank_with_debug(
+            query=query, hits=coarse_hits, top_k=top_k
+        )
+
+        # 合并两阶段 debug：coarse rank → fine rank
+        for item in coarse_debug:
+            item["stage"] = "coarse"
+        for item in fine_debug:
+            item["stage"] = "fine"
+        combined_debug = coarse_debug + fine_debug
+
+        return fine_hits, combined_debug
+
+
+def build_reranker(config: AgentConfig) -> SimpleReranker | BGEReranker | HuggingFaceReranker | CascadeReranker:
+    """根据配置构建合适的 reranker。
+
+    RERANK_ENABLED=false → SimpleReranker
+    rerank_cascade=true + provider=ollama → CascadeReranker(SimpleReranker → BGEReranker)
+    rerank_cascade=true + provider=huggingface → CascadeReranker(SimpleReranker → HuggingFaceReranker)
+    rerank_provider=huggingface → HuggingFaceReranker
+    rerank_provider=ollama → BGEReranker（健康检查失败则降级）
+    """
+    if not config.rerank_enabled:
+        return SimpleReranker()
+
+    # 两阶段串联模式
+    if getattr(config, "rerank_cascade", False):
+        coarse = SimpleReranker()
+        if config.rerank_provider == "huggingface":
+            fine = HuggingFaceReranker(model=config.rerank_model)
+        elif config.rerank_provider == "ollama":
+            fine = BGEReranker(base_url=config.rerank_base_url, model=config.rerank_model)
+        else:
+            fine = BGEReranker(base_url=config.rerank_base_url, model=config.rerank_model)
+        return CascadeReranker(coarse_reranker=coarse, fine_reranker=fine)
+
+    if config.rerank_provider == "huggingface":
+        return HuggingFaceReranker(model=config.rerank_model)
+
+    if config.rerank_provider == "ollama":
+        reranker = BGEReranker(
+            base_url=config.rerank_base_url,
+            model=config.rerank_model,
+        )
+        if not reranker._health_check():
+            logger.warning("[RAG] BGEReranker 健康检查未通过，使用 SimpleReranker 作为 fallback。")
+            return SimpleReranker()
+        return reranker
+
+    return SimpleReranker()

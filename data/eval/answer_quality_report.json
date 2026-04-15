@@ -1,0 +1,20 @@
+{
+  "test_methodology": "GroundedGenerator.generate() with retrieved evidence - simplified quality check (not LLM-as-judge)",
+  "total_queries": 5,
+  "evaluated_count": 1,
+  "avg_quality_score": 2.0,
+  "avg_completeness_score": 3.0,
+  "citation_accuracy_percentage": 0.0,
+  "sample_results": [
+    {
+      "id": "q17",
+      "query": "贵州茅台2024年营业收入同比增长多少？",
+      "expected": "15.71%",
+      "generated_answer": "结论：基于现有证据可给出谨慎估计，建议结合后续披露数据复核。\n关键依据：证据显示 贵州茅台酒股份有限公司2024年年度报告\n引用编号：[1][2][3]",
+      "contains_expected": false,
+      "has_citations": true,
+      "quality_score": 2,
+      "completeness_score": 3
+    }
+  ]
+}

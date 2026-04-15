@@ -1,0 +1,599 @@
+{
+  "generated_at": "2026-04-14T06:30:36.030508",
+  "llm_provider": "anthropic_compatible",
+  "llm_model": "MiniMax-M2.7",
+  "has_real_llm": "sk-cp-Vn3s2tiBmmlh6_D6i-z9uy5B3jOL_eHutlAm0DSTWZ2G7PVHWefPFrttegKQIt0BSYaL9LZrB74ZpMWLXHro5tN0t9dNjWKqgyWeav53rhH4XDT-UAxpKTw",
+  "note": "Real LLM provider configured",
+  "dataset_size": 29,
+  "stage_latency_stats": {
+    "router_llm_ms": {
+      "avg_ms": 0.0,
+      "min_ms": 0,
+      "max_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "count": 29
+    },
+    "query_rewrite_ms": {
+      "avg_ms": 1.86,
+      "min_ms": 0,
+      "max_ms": 6,
+      "p95_ms": 6,
+      "p99_ms": 6,
+      "count": 29
+    },
+    "retrieval_ms": {
+      "avg_ms": 5.17,
+      "min_ms": 0,
+      "max_ms": 15,
+      "p95_ms": 15,
+      "p99_ms": 15,
+      "count": 29
+    },
+    "rerank_ms": {
+      "avg_ms": 3.48,
+      "min_ms": 0,
+      "max_ms": 11,
+      "p95_ms": 10,
+      "p99_ms": 11,
+      "count": 29
+    },
+    "worker_execution_ms": {
+      "avg_ms": 1.21,
+      "min_ms": 1,
+      "max_ms": 2,
+      "p95_ms": 2,
+      "p99_ms": 2,
+      "count": 29
+    },
+    "synthesizer_ms": {
+      "avg_ms": 1.0,
+      "min_ms": 1,
+      "max_ms": 1,
+      "p95_ms": 1,
+      "p99_ms": 1,
+      "count": 29
+    },
+    "total_ms": {
+      "avg_ms": 13.55,
+      "min_ms": 2,
+      "max_ms": 35,
+      "p95_ms": 35,
+      "p99_ms": 35,
+      "count": 29
+    }
+  },
+  "stage_latency_percentages": {
+    "query_rewrite_ms": 14.62,
+    "retrieval_ms": 40.64,
+    "rerank_ms": 27.36,
+    "worker_execution_ms": 9.51,
+    "synthesizer_ms": 7.86
+  },
+  "route_type_latency_stats": {
+    "react": {
+      "count": 11,
+      "avg_ms": 14.18,
+      "p95_ms": 35,
+      "p99_ms": 35,
+      "min_ms": 2,
+      "max_ms": 35
+    },
+    "coordinator": {
+      "count": 6,
+      "avg_ms": 34.33,
+      "p95_ms": 35,
+      "p99_ms": 35,
+      "min_ms": 34,
+      "max_ms": 35
+    },
+    "clarify": {
+      "count": 12,
+      "avg_ms": 2.58,
+      "p95_ms": 3,
+      "p99_ms": 3,
+      "min_ms": 2,
+      "max_ms": 3
+    }
+  },
+  "routing_decision_accuracy": {
+    "total": 29,
+    "correct": 25,
+    "accuracy": 86.21
+  },
+  "individual_results": [
+    {
+      "query": "现在几点？",
+      "description": "时间查询",
+      "expected_tier": "tool_only",
+      "expected_route": "react",
+      "actual_route": "react",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "计算 123*456",
+      "description": "算术计算",
+      "expected_tier": "tool_only",
+      "expected_route": "react",
+      "actual_route": "react",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 2,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "今天日期是什么",
+      "description": "日期查询",
+      "expected_tier": "tool_only",
+      "expected_route": "react",
+      "actual_route": "react",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "查看记忆",
+      "description": "记忆读取",
+      "expected_tier": "tool_only",
+      "expected_route": "react",
+      "actual_route": "react",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "搜索一下北京天气",
+      "description": "网络搜索",
+      "expected_tier": "tool_only",
+      "expected_route": "react",
+      "actual_route": "react",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 2,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "茅台是哪家公司？",
+      "description": "简单知识问答",
+      "expected_tier": "knowledge",
+      "expected_route": "react",
+      "actual_route": "react",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 5,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 34
+      }
+    },
+    {
+      "query": "五粮液在哪里上市？",
+      "description": "简单事实查询",
+      "expected_tier": "knowledge",
+      "expected_route": "react",
+      "actual_route": "react",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 5,
+        "retrieval_ms": 15,
+        "rerank_ms": 11,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 35
+      }
+    },
+    {
+      "query": "贵州茅台2023年营收是多少",
+      "description": "单实体财务查询",
+      "expected_tier": "knowledge",
+      "expected_route": "react",
+      "actual_route": "react",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 6,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 34
+      }
+    },
+    {
+      "query": "五粮液和泸州老窖的市值对比",
+      "description": "多实体对比→复杂",
+      "expected_tier": "knowledge",
+      "expected_route": "coordinator",
+      "actual_route": "coordinator",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 6,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 34
+      }
+    },
+    {
+      "query": "茅台和五粮液的营收对比",
+      "description": "多实体营收对比",
+      "expected_tier": "knowledge",
+      "expected_route": "coordinator",
+      "actual_route": "coordinator",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 6,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 35
+      }
+    },
+    {
+      "query": "请分析一下白酒行业的发展现状",
+      "description": "行业分析→复杂",
+      "expected_tier": "knowledge",
+      "expected_route": "coordinator",
+      "actual_route": "react",
+      "route_match": false,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 5,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 34
+      }
+    },
+    {
+      "query": "查茅台营收并计算同比增长率",
+      "description": "检索+计算",
+      "expected_tier": "mixed",
+      "expected_route": "coordinator",
+      "actual_route": "coordinator",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 5,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 34
+      }
+    },
+    {
+      "query": "检索财务数据并分析原因",
+      "description": "数据+分析",
+      "expected_tier": "mixed",
+      "expected_route": "coordinator",
+      "actual_route": "coordinator",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 6,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 35
+      }
+    },
+    {
+      "query": "生成报告并包含增长率计算",
+      "description": "报告+计算",
+      "expected_tier": "mixed",
+      "expected_route": "coordinator",
+      "actual_route": "coordinator",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 5,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 34
+      }
+    },
+    {
+      "query": "查营收数据分析同比变化原因",
+      "description": "检索+分析+原因",
+      "expected_tier": "mixed",
+      "expected_route": "coordinator",
+      "actual_route": "clarify",
+      "route_match": false,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 2,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "对比茅台和五粮液的毛利率并分析原因",
+      "description": "对比+分析",
+      "expected_tier": "mixed",
+      "expected_route": "coordinator",
+      "actual_route": "coordinator",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 5,
+        "retrieval_ms": 15,
+        "rerank_ms": 10,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 34
+      }
+    },
+    {
+      "query": "你好啊！",
+      "description": "问候语",
+      "expected_tier": "chitchat",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "您好啊！",
+      "description": "礼貌问候",
+      "expected_tier": "chitchat",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "你是谁",
+      "description": "自报家门",
+      "expected_tier": "chitchat",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 2,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "谢谢啦！",
+      "description": "感谢回复",
+      "expected_tier": "chitchat",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 2
+      }
+    },
+    {
+      "query": "那个",
+      "description": "单独指代词",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 2
+      }
+    },
+    {
+      "query": "继续",
+      "description": "继续上句",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 2,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "它",
+      "description": "单独代词",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 2,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "这个",
+      "description": "指示代词",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 2
+      }
+    },
+    {
+      "query": "怎么了",
+      "description": "单独疑问词",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 2
+      }
+    },
+    {
+      "query": "",
+      "description": "空输入",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 2
+      }
+    },
+    {
+      "query": "6",
+      "description": "极短输入",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "route_match": true,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 3
+      }
+    },
+    {
+      "query": "帮我查一下",
+      "description": "无宾语查询",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "react",
+      "route_match": false,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 2
+      }
+    },
+    {
+      "query": "分析一下",
+      "description": "无目标分析",
+      "expected_tier": "ambiguous",
+      "expected_route": "clarify",
+      "actual_route": "react",
+      "route_match": false,
+      "latency": {
+        "router_llm_ms": 0,
+        "query_rewrite_ms": 0,
+        "retrieval_ms": 0,
+        "rerank_ms": 0,
+        "worker_execution_ms": 1,
+        "synthesizer_ms": 1,
+        "total_ms": 2
+      }
+    }
+  ]
+}

@@ -1,0 +1,275 @@
+{
+  "generated_at": "2026-04-14T14:52:53.033665",
+  "test_methodology_note": "Real LLM calls + Real RAG retrieval + Simplified quality check",
+  "modules": {
+    "routing_accuracy": {
+      "test_methodology": "Real LLM calls to LLMRouterAgent.route() - compare with expected route",
+      "total_queries": 13,
+      "api_errors_excluded": 13,
+      "valid_responses": 0,
+      "correct": 0,
+      "accuracy_percentage": 0,
+      "category_breakdown": {
+        "single_step": {
+          "accuracy": 0,
+          "correct": 0,
+          "total": 4,
+          "api_errors": 4
+        },
+        "multi_step": {
+          "accuracy": 0,
+          "correct": 0,
+          "total": 4,
+          "api_errors": 4
+        },
+        "clarify": {
+          "accuracy": 0,
+          "correct": 0,
+          "total": 5,
+          "api_errors": 5
+        }
+      },
+      "results": [
+        {
+          "query": "现在几点？",
+          "expected": "single_step",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 563
+        },
+        {
+          "query": "计算 1+1",
+          "expected": "single_step",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 630
+        },
+        {
+          "query": "今天日期是什么",
+          "expected": "single_step",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 555
+        },
+        {
+          "query": "查看记忆",
+          "expected": "single_step",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 1572
+        },
+        {
+          "query": "查茅台营收并计算增长率",
+          "expected": "multi_step",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 685
+        },
+        {
+          "query": "检索财务数据并分析原因",
+          "expected": "multi_step",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 498
+        },
+        {
+          "query": "对比茅台和五粮液的营收",
+          "expected": "multi_step",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 477
+        },
+        {
+          "query": "你好",
+          "expected": "clarify",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 476
+        },
+        {
+          "query": "谢谢你的帮助",
+          "expected": "clarify",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 542
+        },
+        {
+          "query": "那个",
+          "expected": "clarify",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 697
+        },
+        {
+          "query": "继续",
+          "expected": "clarify",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 514
+        },
+        {
+          "query": "帮我查一下",
+          "expected": "clarify",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 375
+        },
+        {
+          "query": "分析一下",
+          "expected": "multi_step",
+          "actual": "ERROR",
+          "correct": false,
+          "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+          "is_api_error": true,
+          "latency_ms": 1821
+        }
+      ]
+    },
+    "rag_latency": {
+      "test_methodology": "Real RAGChain.execute() with InMemoryHybridRetriever - no LLM generation",
+      "dataset_size": 5,
+      "stage_latency_stats": {
+        "rewrite_ms": {
+          "avg_ms": 0.2,
+          "p50_ms": 0,
+          "p95_ms": 1,
+          "p99_ms": 1,
+          "min_ms": 0,
+          "max_ms": 1,
+          "count": 5
+        },
+        "retrieval_ms": {
+          "avg_ms": 1422.0,
+          "p50_ms": 1408,
+          "p95_ms": 1503,
+          "p99_ms": 1503,
+          "min_ms": 1361,
+          "max_ms": 1503,
+          "count": 5
+        },
+        "rerank_ms": {
+          "avg_ms": 0.0,
+          "p50_ms": 0,
+          "p95_ms": 0,
+          "p99_ms": 0,
+          "min_ms": 0,
+          "max_ms": 0,
+          "count": 5
+        },
+        "total_ms": {
+          "avg_ms": 1422.2,
+          "p50_ms": 1408,
+          "p95_ms": 1504,
+          "p99_ms": 1504,
+          "min_ms": 1361,
+          "max_ms": 1504,
+          "count": 5
+        }
+      },
+      "stage_percentages": {
+        "rewrite_ms": 0.0,
+        "retrieval_ms": 100.0,
+        "rerank_ms": 0.0
+      },
+      "bottleneck": "total_ms"
+    },
+    "answer_quality": {
+      "test_methodology": "GroundedGenerator.generate() with retrieved evidence - simplified quality check (not LLM-as-judge)",
+      "total_queries": 5,
+      "evaluated_count": 1,
+      "avg_quality_score": 2.0,
+      "avg_completeness_score": 3.0,
+      "citation_accuracy_percentage": 0.0,
+      "sample_results": [
+        {
+          "id": "q17",
+          "query": "贵州茅台2024年营业收入同比增长多少？",
+          "expected": "15.71%",
+          "generated_answer": "结论：基于现有证据可给出谨慎估计，建议结合后续披露数据复核。\n关键依据：证据显示 贵州茅台酒股份有限公司2024年年度报告\n引用编号：[1][2][3]",
+          "contains_expected": false,
+          "has_citations": true,
+          "quality_score": 2,
+          "completeness_score": 3
+        }
+      ]
+    },
+    "query_rewrite": {
+      "test_methodology": "Call rewrite_for_rag() with model=None (rule mode) and compare retrieval overlap",
+      "module_exists": true,
+      "is_integrated": true,
+      "mode_used": "rule (model=None)",
+      "llm_modes_available": [
+        "hybrid",
+        "hyde",
+        "expand",
+        "llm"
+      ],
+      "llm_mode_disabled_reason": "rag_chain.py passes model=None to rewrite_for_rag()",
+      "rewrite_results": [
+        {
+          "original": "茅台营收是多少",
+          "rewritten": "茅台营收是多少",
+          "rewrite_time_ms": 0,
+          "original_hit_count": 5,
+          "rewritten_hit_count": 5,
+          "hit_overlap": 1.0
+        },
+        {
+          "original": "查一下茅台的营业收入",
+          "rewritten": "查一下茅台的营业收入",
+          "rewrite_time_ms": 0,
+          "original_hit_count": 5,
+          "rewritten_hit_count": 5,
+          "hit_overlap": 1.0
+        },
+        {
+          "original": "贵州茅台2024年赚了多少",
+          "rewritten": "贵州茅台2024年赚了多少",
+          "rewrite_time_ms": 0,
+          "original_hit_count": 5,
+          "rewritten_hit_count": 5,
+          "hit_overlap": 1.0
+        }
+      ],
+      "avg_hit_overlap": 1.0,
+      "recommendation": "Enable LLM-based rewrite by passing model provider to RAGChain._rewrite()"
+    }
+  },
+  "summary": {
+    "routing_accuracy": 0,
+    "RAG_latency_p50_ms": 1408,
+    "RAG_latency_p95_ms": 1504,
+    "answer_quality": 2.0,
+    "citation_accuracy": 0.0,
+    "query_rewrite_mode": "rule (model=None)"
+  },
+  "strictness_issues": [
+    "Answer quality uses simplified check (not LLM-as-judge)",
+    "Routing accuracy limited by API errors (500/529)",
+    "Query rewrite only tested in rule mode (LLM mode not enabled)"
+  ]
+}

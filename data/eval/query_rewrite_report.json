@@ -1,0 +1,41 @@
+{
+  "test_methodology": "Call rewrite_for_rag() with model=None (rule mode) and compare retrieval overlap",
+  "module_exists": true,
+  "is_integrated": true,
+  "mode_used": "rule (model=None)",
+  "llm_modes_available": [
+    "hybrid",
+    "hyde",
+    "expand",
+    "llm"
+  ],
+  "llm_mode_disabled_reason": "rag_chain.py passes model=None to rewrite_for_rag()",
+  "rewrite_results": [
+    {
+      "original": "茅台营收是多少",
+      "rewritten": "茅台营收是多少",
+      "rewrite_time_ms": 0,
+      "original_hit_count": 5,
+      "rewritten_hit_count": 5,
+      "hit_overlap": 1.0
+    },
+    {
+      "original": "查一下茅台的营业收入",
+      "rewritten": "查一下茅台的营业收入",
+      "rewrite_time_ms": 0,
+      "original_hit_count": 5,
+      "rewritten_hit_count": 5,
+      "hit_overlap": 1.0
+    },
+    {
+      "original": "贵州茅台2024年赚了多少",
+      "rewritten": "贵州茅台2024年赚了多少",
+      "rewrite_time_ms": 0,
+      "original_hit_count": 5,
+      "rewritten_hit_count": 5,
+      "hit_overlap": 1.0
+    }
+  ],
+  "avg_hit_overlap": 1.0,
+  "recommendation": "Enable LLM-based rewrite by passing model provider to RAGChain._rewrite()"
+}

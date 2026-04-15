@@ -1,0 +1,227 @@
+{
+  "comparison_report": {
+    "date": "2026-04-14",
+    "dataset_size": 21,
+    "routing_accuracy": {
+      "baseline": 0.71,
+      "new": 0.48,
+      "improvement": "-23.8%"
+    },
+    "latency_p50_ms": {
+      "baseline": 15,
+      "new": 8349,
+      "improvement": "--55560.0%"
+    },
+    "latency_avg_ms": {
+      "baseline": 20,
+      "new": 8245.0
+    },
+    "latency_p95_ms": 12527,
+    "latency_p99_ms": 12527
+  },
+  "baseline_results": {
+    "accuracy": 71.4,
+    "correct": 15,
+    "total": 21
+  },
+  "llm_results": {
+    "accuracy": 47.6,
+    "correct": 10,
+    "total": 21,
+    "avg_latency_ms": 8245.0,
+    "p50_latency_ms": 8349,
+    "p95_latency_ms": 12527,
+    "p99_latency_ms": 12527
+  },
+  "individual_results": [
+    {
+      "query": "现在几点？",
+      "expected": "react",
+      "actual": "react",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "Simple time query answerable with one tool call",
+      "latency_ms": 6878
+    },
+    {
+      "query": "计算 123*456",
+      "expected": "react",
+      "actual": "react",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "Simple arithmetic calculation requiring one tool call",
+      "latency_ms": 3629
+    },
+    {
+      "query": "今天日期是什么",
+      "expected": "react",
+      "actual": "react",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "简单的时间查询，只需要调用get_time工具获取当前日期",
+      "latency_ms": 5506
+    },
+    {
+      "query": "茅台是哪家公司？",
+      "expected": "coordinator",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.9,
+      "reasoning": "Simple knowledge question about Moutai's company identity, answerable with one retrieval from knowledge base",
+      "latency_ms": 5859
+    },
+    {
+      "query": "五粮液在哪里上市？",
+      "expected": "coordinator",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.9,
+      "reasoning": "Simple factual query about a company's listing exchange - can be answered with one knowledge base search",
+      "latency_ms": 6309
+    },
+    {
+      "query": "贵州茅台2023年营收是多少",
+      "expected": "coordinator",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "Fallback: could not parse LLM response",
+      "latency_ms": 9782
+    },
+    {
+      "query": "五粮液和泸州老窖的市值对比",
+      "expected": "coordinator",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "Fallback: could not parse LLM response",
+      "latency_ms": 12527
+    },
+    {
+      "query": "茅台和五粮液的营收对比",
+      "expected": "coordinator",
+      "actual": "coordinator",
+      "correct": true,
+      "confidence": 0.88,
+      "reasoning": "需要分别检索茅台和五粮液的营收数据，然后进行对比计算，属于多步骤查询",
+      "latency_ms": 10491
+    },
+    {
+      "query": "请分析一下白酒行业的发展现状",
+      "expected": "coordinator",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "Fallback: could not parse LLM response",
+      "latency_ms": 10488
+    },
+    {
+      "query": "查茅台营收并计算同比增长率",
+      "expected": "coordinator",
+      "actual": "coordinator",
+      "correct": true,
+      "confidence": 0.9,
+      "reasoning": "需要先检索茅台营收数据，然后计算同比增长率，两个步骤",
+      "latency_ms": 9299
+    },
+    {
+      "query": "检索财务数据并分析原因",
+      "expected": "coordinator",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "Fallback: could not parse LLM response",
+      "latency_ms": 8609
+    },
+    {
+      "query": "你好啊！",
+      "expected": "clarify",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "Fallback: could not parse LLM response",
+      "latency_ms": 8085
+    },
+    {
+      "query": "您好啊！",
+      "expected": "clarify",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "Fallback: could not parse LLM response",
+      "latency_ms": 7480
+    },
+    {
+      "query": "你是谁",
+      "expected": "clarify",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.85,
+      "reasoning": "询问AI身份是简单的知识类问题，通过一次检索即可获得答案",
+      "latency_ms": 9107
+    },
+    {
+      "query": "谢谢啦！",
+      "expected": "clarify",
+      "actual": "react",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "Fallback: could not parse LLM response",
+      "latency_ms": 10793
+    },
+    {
+      "query": "那个",
+      "expected": "clarify",
+      "actual": "clarify",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "The query '那个' (meaning 'that one') is an incomplete reference without clear subject or question. It's ambiguous and lacks context about what specific topic the user wants to inquire about. Needs clarification to proceed.",
+      "latency_ms": 8048
+    },
+    {
+      "query": "继续",
+      "expected": "clarify",
+      "actual": "clarify",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "The query '继续' (continue) is ambiguous and lacks context. Without knowing what the user wants to continue (search, analysis, report generation, etc.), clarification is needed to proceed.",
+      "latency_ms": 6861
+    },
+    {
+      "query": "它",
+      "expected": "clarify",
+      "actual": "clarify",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "The query '它' is a single pronoun without clear reference. It could be a continuation of a previous conversation or an incomplete thought, but there is no context or specific topic to address. The user needs to clarify what '它' refers to or what information they are seeking.",
+      "latency_ms": 8349
+    },
+    {
+      "query": "怎么了",
+      "expected": "clarify",
+      "actual": "clarify",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "The query '怎么了' is a fragmentary and ambiguous phrase meaning 'What's wrong?' or 'What happened?' without any specific context or reference about what the user is asking. It requires clarification to determine the topic or entity of interest.",
+      "latency_ms": 9157
+    },
+    {
+      "query": "分析一下",
+      "expected": "coordinator",
+      "actual": "ERROR: 500 Server Error: Internal Server Error for url: h",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "",
+      "latency_ms": 0
+    },
+    {
+      "query": "帮我查一下",
+      "expected": "clarify",
+      "actual": "clarify",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "用户请求不完整，只有'帮我查一下'但没有指定要查询的具体内容或主题，属于模糊的片段化查询，需要用户进一步明确查询目标",
+      "latency_ms": 7644
+    }
+  ]
+}

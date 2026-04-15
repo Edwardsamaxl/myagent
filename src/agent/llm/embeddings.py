@@ -103,7 +103,7 @@ def build_embedding_provider(config: AgentConfig) -> EmbeddingProvider | None:
     if not config.embedding_enabled:
         return None
 
-    provider = config.embedding_provider or config.model_provider.lower()
+    provider = config.embedding_provider.strip().lower() if config.embedding_provider.strip() else "ollama"
     if provider == "ollama":
         return OllamaEmbeddingProvider(config.ollama_base_url, config.embedding_model)
     if provider == "openai_compatible":

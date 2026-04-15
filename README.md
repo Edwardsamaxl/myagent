@@ -1,4 +1,4 @@
-# Fin-agent
+**Fin-agent**: 面向金融场景的 RAG + Agent 项目。
 
 > 一个面向金融领域的 RAG + Agent 问答系统。展示 RAG pipeline 优化能力、Agent 架构设计能力与工程实现能力。
 
@@ -21,11 +21,15 @@
                         │
 ┌───────────────────────▼─────────────────────────────────┐
 │                  Agent Core                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐ │
-│  │ Planner  │  │  Worker  │  │Synthesiz.│  │ Loop   │ │
-│  │(任务分解)│→ │Executor  │→ │(汇总生成) │  │(兼容)  │ │
-│  └──────────┘  └──────────┘  └──────────┘  └────────┘ │
-└───────────────────────┬─────────────────────────────────┘
+│  ┌────────────────┐  ┌──────────┐  ┌──────────┐  ┌────┐│
+│  │ AgentRouter   │  │ Planner  │  │  Worker  │  │Sync ││
+│  │(路由决策)      │→ │(任务分解)│→ │Executor  │→ │     ││
+│  └────────────────┘  └──────────┘  └──────────┘  └────┘│
+│        │                                                   │
+│   Route.ReAct ────→ LangGraph ReAct Agent（简单问题）      │
+│   Route.Coordinator ──→ Coordinator 多步规划（复杂问题）    │
+│   Route.Clarify ────→ 澄清回复（模糊问题）                │
+└─────────────────────────────────────────────────────────┘
                         │
 ┌───────────────────────▼─────────────────────────────────┐
 │                 RAG Pipeline                            │
@@ -65,22 +69,37 @@ myagent/
    │   │   ├─ planner.py          # 任务分解器（LLM 生成步骤计划）
    │   │   ├─ synthesizer.py       # 结果汇总器（基于证据生成回答）
    │   │   ├─ plan_schema.py       # Plan 数据结构
-   │   │   └─ worker_result.py     # Worker 执行结果封装
+   │   │   ├─ task_notification.py # Worker 通知协议
+   │   │   ├─ worker_result.py     # Worker 执行结果封装
+   │   │   ├─ langgraph_agent.py  # LangGraph ReAct Agent 封装
+   │   │   ├─ agent_graph.py      # LangGraph 图构建
+   │   │   └─ state.py            # Agent 状态定义
    │   ├─ retrieval.py             # 混合检索（lexical + tfidf/BM25 + embedding）
    │   ├─ rerank.py                # 多级重排（Simple · BGE · HuggingFace · Cascade）
+   │   ├─ router/
+   │   │   └─ agent_router.py     # AgentRouter 路由决策（复杂度+困惑度判断）
+   │   ├─ dialogue/
+   │   │   ├─ intent_classifier.py # 四阶段意图分类
+   │   │   ├─ intent_schema.py    # 意图数据结构
+   │   │   └─ query_rewrite.py   # Query 重写（HyDE/expand）
    │   ├─ ingestion.py             # 文档清洗·切块·去重
    │   ├─ generation.py            # 基于证据生成 + 拒答
    │   ├─ evaluation.py            # RAG 评估（Recall@K · HitRate · MRR · LLM Groundedness）
    │   ├─ observability.py          # trace 事件记录
    │   └─ schemas.py              # 数据模型（DocumentChunk · RetrievalHit · EvalRecord）
    ├─ application/
-   │   ├─ agent_service.py         # Agent 编排层
+   │   ├─ agent_service.py        # Agent 编排层（Router + Coordinator/LangGraph）
    │   └─ rag_agent_service.py     # RAG 链路编排（含 embedding 健康检查与降级）
    ├─ llm/
    │   ├─ providers.py             # 多 Provider 统一抽象
    │   └─ embeddings.py           # Embedding 提供者（Ollama qwen3-embedding · Mock）
    ├─ tools/
-   │   └─ registry.py             # 工具注册与调用协议
+   │   ├─ registry.py             # 工具注册与调用协议
+   │   ├─ rag_tool.py            # search_knowledge_base 工具函数
+   │   ├─ schemas.py             # 工具数据结构
+   │   ├─ builders.py             # 工具构建器
+   │   ├─ context.py             # 工具上下文
+   │   └─ mcp.py                 # MCP 工具管理
    ├─ interfaces/
    │   └─ web_app.py              # Flask Web UI + REST API
    └─ (compat) agent.py · providers.py · service.py · web.py
@@ -148,7 +167,30 @@ RERANKER_PROVIDER=huggingface        # 或 ollama
 RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 ```
 
-### 3. Coordinator 规划层
+### 3. AgentRouter 路由决策
+
+`AgentRouter` 是统一入口，根据复杂度+困惑度将请求路由到不同执行路径：
+
+```
+用户问题 → AgentRouter.decide(query, history, intent_result)
+    │
+    ├── Route.ReAct  → LangGraph ReAct Agent（单步工具调用，简单问题）
+    │                 例：时间查询、计算、闲聊
+    │
+    ├── Route.Coordinator → Coordinator 多步规划（复杂问题）
+    │                       例：查营收+计算增长率、多工具协作
+    │
+    └── Route.Clarify → 澄清回复（模糊问题）
+                          例：单独代词、无宾语疑问词
+```
+
+**路由判断维度**：
+- **IntentTier**：MIXED/OOS → Coordinator；AMBIGUOUS/CHITCHAT → Clarify
+- **复杂度信号**：多语义pattern（`并[且和]`、`对比`、`增长率`）≥2个 → Coordinator
+- **置信度**：TOOL_ONLY + conf≥0.85 → ReAct；conf<0.60 + 非KNOWLEDGE → Clarify
+- **单步信号**：`现在几点`、`计算\d+`等正则匹配 → ReAct
+
+### 4. Coordinator 规划层
 
 `Coordinator` 实现 **Plan → Execute → Synthesize** 三阶段：
 
@@ -176,7 +218,7 @@ RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 - **依赖调度**：根据 `depends_on` 与 `parallel_with` 自动拓扑排序，独立任务并行执行
 - **降级策略**：Planner JSON 解析失败时，自动降级为直接 synthesize
 
-### 4. RAG 评估指标体系
+### 5. RAG 评估指标体系
 
 | 指标 | 说明 |
 |------|------|
@@ -187,7 +229,7 @@ RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 | `RelevanceEvaluator` | LLM 评估回答与问题的相关程度（0~1） |
 | `substring_match_rate` | 离线评估：参考答案子串命中比例 |
 
-### 5. 可进化机制
+### 6. 可进化机制
 
 - **长期记忆**：`workspace/MEMORY.md`，Agent 可读写
 - **技能学习**：`workspace/skills/*.md`，按需加载
@@ -217,7 +259,7 @@ RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 | LLM | anthropic_compatible / openai_compatible / ollama |
 | Embedding | qwen3-embedding（4096维，阿里 Qwen3，Ollama） |
 | Reranker | BAAI/bge-reranker-v2-m3（CrossEncoder） |
-| Agent | LangGraph（规划层）+ 自研 Coordinator |
+| Agent | LangGraph（ReAct）+ 自研 Coordinator + AgentRouter |
 | 评估 | Recall@K · HitRate · MRR · LLM-based Groundedness |
 | 向量存储 | 内存索引（惰性计算 + 磁盘持久化） |
 

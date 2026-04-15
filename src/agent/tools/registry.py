@@ -5,50 +5,38 @@ from __future__ import annotations
 import ast
 import os
 import re
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from threading import Semaphore
 from typing import Any, Callable
 
 import requests
 
+# 模块级并发控制：最多 3 个并发搜索请求
+_search_semaphore = Semaphore(3)
+
 from ..core.memory_store import MemoryStore
 from ..core.skill_store import SkillStore
+from .schemas import Tool as UnifiedTool, ToolSchema, ToolSource
 
-# 引用合规预检使用的锚点提取与覆盖率评估（与 generation.py 共用同一套阈值配置）
-_ANCHOR_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]{2,}|[A-Za-z]{2,}|\d+(?:\.\d+)?%?")
-_STOPWORDS = {
-    "公司", "多少", "什么", "如何", "是否", "以及", "这个", "那个", "根据", "报告", "数据", "其中",
-}
-_REFUSE_COVERAGE_THRESHOLD = float(os.getenv("AGENT_REFUSE_COVERAGE_THRESHOLD", "0.10"))
+try:
+    from .builders import build_tool
+except ImportError:
+    build_tool = None  # type: ignore[assignment]
 
-
-def _extract_anchor_tokens(text: str) -> list[str]:
-    """提取文本中的关键锚点 tokens（数字/年份/百分比/关键实体）。"""
-    tokens: list[str] = []
-    for m in _ANCHOR_TOKEN_RE.finditer(text):
-        token = m.group(0).strip()
-        if len(token) <= 1:
-            continue
-        if token in _STOPWORDS:
-            continue
-        tokens.append(token)
-    return tokens
-
-
-def _evaluate_query_coverage(question: str, hit_texts: list[str]) -> tuple[float, dict[str, int]]:
-    """计算问题锚点在证据文本列表中的覆盖率（与 generation.py 的 evaluate_anchor_coverage 同源）。"""
-    evidence_text = "\n".join(hit_texts).lower()
-    q_anchors = _extract_anchor_tokens(question)
-    if not q_anchors:
-        return 1.0, {"anchors": 0, "covered": 0}
-    covered = sum(1 for token in q_anchors if token.lower() in evidence_text)
-    return covered / len(q_anchors), {"anchors": len(q_anchors), "covered": covered}
+# RAG tool uses the coverage threshold from rag_tool module
+try:
+    from .rag_tool import create_search_knowledge_base_tool
+except ImportError:
+    create_search_knowledge_base_tool = None  # type: ignore[assignment]
 
 
 ToolFunc = Callable[[str], str]
 
 
+# Backward-compatible Tool dataclass for SimpleAgent (name/description/func interface)
 @dataclass
 class Tool:
     name: str
@@ -56,8 +44,68 @@ class Tool:
     func: ToolFunc
 
 
+@dataclass
+class ToolRegistry:
+    """Registry for managing tools with built-in protection.
+
+    Tools sourced from ToolSource.BUILTIN cannot be overridden.
+    """
+    _tools: dict[str, UnifiedTool] = field(default_factory=dict)
+
+    def register_tool(self, tool: UnifiedTool) -> None:
+        if tool.name in self._tools:
+            existing = self._tools[tool.name]
+            if hasattr(existing, "source") and existing.source == ToolSource.BUILTIN:
+                raise ValueError(f"Cannot override built-in tool: {tool.name}")
+        self._tools[tool.name] = tool
+
+    def get_tool(self, name: str) -> UnifiedTool | None:
+        return self._tools.get(name)
+
+    def list_tools(self) -> list[UnifiedTool]:
+        return list(self._tools.values())
+
+
 def get_time() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+class _MathEvaluator(ast.NodeVisitor):
+    """纯 AST 数学表达式求值器，无 eval() 调用。"""
+
+    def visit_Constant(self, node: ast.Constant) -> float:
+        if isinstance(node.value, (int, float)):
+            return float(node.value)
+        raise ValueError(f"不支持的常量类型: {type(node.value)}")
+
+    def visit_BinOp(self, node: ast.BinOp) -> float:
+        left = self.visit(node.left)
+        right = self.visit(node.right)
+        op_type = type(node.op)
+        if op_type is ast.Add:
+            return left + right
+        if op_type is ast.Sub:
+            return left - right
+        if op_type is ast.Mult:
+            return left * right
+        if op_type is ast.Div:
+            if right == 0:
+                raise ValueError("除零错误。")
+            return left / right
+        if op_type is ast.Mod:
+            return left % right
+        if op_type is ast.Pow:
+            return left ** right
+        raise ValueError(f"不支持的二元操作符: {op_type.__name__}")
+
+    def visit_UnaryOp(self, node: ast.UnaryOp) -> float:
+        operand = self.visit(node.operand)
+        op_type = type(node.op)
+        if op_type is ast.UAdd:
+            return +operand
+        if op_type is ast.USub:
+            return -operand
+        raise ValueError(f"不支持的一元操作符: {op_type.__name__}")
 
 
 def _safe_eval_math(expr: str) -> float:
@@ -79,9 +127,10 @@ def _safe_eval_math(expr: str) -> float:
     node = ast.parse(expr, mode="eval")
     for sub_node in ast.walk(node):
         if not isinstance(sub_node, allowed_nodes):
-            raise ValueError("只允许基础算术表达式。")
+            raise ValueError(f"只允许基础算术表达式，发现: {type(sub_node).__name__}")
 
-    return float(eval(compile(node, "<calc>", "eval"), {"__builtins__": {}}))
+    evaluator = _MathEvaluator()
+    return evaluator.visit(node.body)
 
 
 def calculate(expr: str) -> str:
@@ -102,95 +151,88 @@ def _safe_path(path_value: str, workspace_dir: Path) -> Path:
     return candidate
 
 
-def create_rag_tool(rag_service: Any) -> Tool:
-    """创建知识库检索工具，让 Agent 自主决定何时检索。
+def _create_rag_tool_from_rag_service(rag_service: Any) -> Tool:
+    """Create knowledge base search tool using rag_tool module.
 
-    引用合规预检：当返回的证据覆盖度低于阈值时，在结果中附加 __refuse__ 标志，
-    由 SimpleAgent 工具循环据此决定是否信任该证据（与 /api/rag 路径的 GroundedGenerator 拒答逻辑一致）。
+    This tool wraps the retrieval pipeline (intent classify, query rewrite,
+    retrieval, rerank) and returns formatted evidence blocks without LLM generation.
     """
+    if create_search_knowledge_base_tool is None:
+        # Fallback if rag_tool module unavailable
+        def search_knowledge_base(query: str) -> str:
+            return "RAG工具不可用：rag_tool模块加载失败。"
 
-    def search_knowledge_base(query: str) -> str:
-        if not query.strip():
-            return "查询字符串为空。"
-        try:
-            result = rag_service.answer(query, append_to_eval_store=False)
-            hits = result.get("retrieval_hits", []) or []
-            if not hits:
-                return "检索结果为空，无法找到相关信息。"
+        return Tool(
+            name="search_knowledge_base",
+            description="在知识库中检索相关信息。输入查询字符串，返回相关文档片段。",
+            func=search_knowledge_base,
+        )
 
-            # --- 引用合规预检：计算 query 对 hits 的覆盖率 ---
-            hit_texts = [hit.get("text_preview") or hit.get("text", "") for hit in hits]
-            coverage, detail = _evaluate_query_coverage(query, hit_texts)
-            refuse_flag = ""
-            if coverage < _REFUSE_COVERAGE_THRESHOLD:
-                refuse_flag = (
-                    f"\n\n[引用合规警告] 证据覆盖度不足（{detail['covered']}/{detail['anchors']}），"
-                    "低质量证据已标记。\n__refuse__"
-                )
-
-            lines = []
-            for i, hit in enumerate(hits[:5], 1):
-                preview = (hit.get("text_preview") or hit.get("text", ""))[:300]
-                source = hit.get("source", "unknown")
-                score = hit.get("score", 0)
-                lines.append(f"[{i}] 来源: {source} (相关度: {score:.2f})")
-                lines.append(f"内容: {preview}")
-                lines.append("")
-            return "\n".join(lines) + refuse_flag
-        except Exception as exc:  # noqa: BLE001
-            return f"检索失败: {exc}"
-
-    return Tool(
-        name="search_knowledge_base",
-        description="在知识库中检索相关信息。输入查询字符串，返回相关文档片段。用于回答需要事实依据的问题，如数据、指标、事件等。",
-        func=search_knowledge_base,
-    )
+    name, description, func = create_search_knowledge_base_tool(rag_service)
+    return Tool(name=name, description=description, func=func)
 
 
-def _safe_web_search(query: str) -> str:
-    """执行网络搜索，使用 DuckDuckGo Instant Answer API（免费无需 key）。"""
+def _safe_web_search_with_retry(query: str, max_retries: int = 3) -> str:
+    """执行网络搜索，使用 DuckDuckGo Instant Answer API（免费无需 key）。
+
+    包含并发控制（Semaphore 3）、重试（最多 3 次）和指数退避。
+    """
     import urllib.parse
 
-    encoded_query = urllib.parse.quote(query)
-    # DuckDuckGo Instant Answer API
-    url = f"https://api.duckduckgo.com/?q={encoded_query}&format=json&no_redirect=1"
+    # 并发控制
+    acquired = _search_semaphore.acquire(timeout=15)
+    if not acquired:
+        return "搜索请求超时：系统繁忙，请稍后重试。"
 
     try:
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        # 强制使用 UTF-8 编码处理响应
-        resp.encoding = "utf-8"
-        data = resp.json()
-    except requests.RequestException as exc:
-        return f"搜索请求失败: {exc}"
+        encoded_query = urllib.parse.quote(query)
+        # DuckDuckGo Instant Answer API
+        url = f"https://api.duckduckgo.com/?q={encoded_query}&format=json&no_redirect=1"
 
-    results = []
-    # 优先取 RelatedTopics（新闻/实体）
-    for topic in data.get("RelatedTopics", [])[:5]:
-        if "Text" in topic and "FirstURL" in topic:
-            results.append({
-                "title": topic.get("Text", "")[:100],
-                "url": topic.get("FirstURL", ""),
-                "snippet": "",
-            })
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                resp = requests.get(url, timeout=10)
+                resp.raise_for_status()
+                resp.encoding = "utf-8"
+                data = resp.json()
+                break  # 成功，跳出重试循环
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < max_retries:
+                    # 指数退避: 0.5s, 1s, 2s...
+                    time.sleep(0.5 * (2 ** attempt))
+                    continue
+                return f"搜索请求失败: {last_error}"
 
-    # 如果没有 RelatedTopics，尝试取 Abstract
-    if not results and data.get("AbstractText"):
-        abstract = data.get("AbstractText", "")
-        source = data.get("AbstractURL", "")
-        return f"{abstract}\n\n来源: {source}"
+        # 处理结果（与原逻辑一致）
+        results = []
+        for topic in data.get("RelatedTopics", [])[:5]:
+            if "Text" in topic and "FirstURL" in topic:
+                results.append({
+                    "title": topic.get("Text", "")[:100],
+                    "url": topic.get("FirstURL", ""),
+                    "snippet": "",
+                })
 
-    if not results:
-        return "未找到相关搜索结果。"
+        if not results and data.get("AbstractText"):
+            abstract = data.get("AbstractText", "")
+            source = data.get("AbstractURL", "")
+            return f"{abstract}\n\n来源: {source}"
 
-    lines = []
-    for i, r in enumerate(results[:5], 1):
-        lines.append(f"[{i}] {r['title']}")
-        if r["snippet"]:
-            lines.append(f"    {r['snippet']}")
-        lines.append(f"    链接: {r['url']}")
-        lines.append("")
-    return "\n".join(lines)
+        if not results:
+            return "未找到相关搜索结果。"
+
+        lines = []
+        for i, r in enumerate(results[:5], 1):
+            lines.append(f"[{i}] {r['title']}")
+            if r["snippet"]:
+                lines.append(f"    {r['snippet']}")
+            lines.append(f"    链接: {r['url']}")
+            lines.append("")
+        return "\n".join(lines)
+    finally:
+        _search_semaphore.release()
 
 
 def default_tools(
@@ -199,6 +241,11 @@ def default_tools(
     workspace_dir: Path,
     rag_service: Any = None,
 ) -> dict[str, Tool]:
+    """Build the default tool set for SimpleAgent.
+
+    Returns dict[str, Tool] for backward compatibility with SimpleAgent's
+    name/description/func interface.
+    """
     def read_memory() -> str:
         return memory_store.read()
 
@@ -275,10 +322,10 @@ def default_tools(
         "web_search": Tool(
             name="web_search",
             description="搜索互联网，返回相关网页摘要。用于查询实时信息、新闻、公开数据等无法从本地知识库获取的内容。",
-            func=_safe_web_search,
+            func=_safe_web_search_with_retry,
         ),
     }
     # 如果传入了 rag_service，添加知识库检索工具
     if rag_service is not None:
-        tools["search_knowledge_base"] = create_rag_tool(rag_service)
+        tools["search_knowledge_base"] = _create_rag_tool_from_rag_service(rag_service)
     return tools

@@ -1,0 +1,192 @@
+{
+  "timestamp": "2026-04-15T15:12:54.798407",
+  "questions": [
+    {
+      "id": "A1",
+      "query": "茅台这家公司去年赚了多少钱口子",
+      "category": "同义表述"
+    },
+    {
+      "id": "A2",
+      "query": "五粮液的主营业务是什么",
+      "category": "同义表述"
+    },
+    {
+      "id": "A3",
+      "query": "帮我查查那家白酒公司的营收增长情况",
+      "category": "同义表述"
+    },
+    {
+      "id": "A4",
+      "query": "那个做酒的公司今年业绩怎样",
+      "category": "同义表述"
+    },
+    {
+      "id": "A5",
+      "query": "上市公司600519的赚钱能力",
+      "category": "同义表述"
+    },
+    {
+      "id": "B1",
+      "query": "茅台2024年的营收增长率是多少？比五粮液高多少个百分点？",
+      "category": "多跳推理"
+    },
+    {
+      "id": "B2",
+      "query": "茅台和五粮液的ROE对比，谁的股东回报更高？",
+      "category": "多跳推理"
+    },
+    {
+      "id": "B3",
+      "query": "茅台2024年营收是三年前的几倍？",
+      "category": "多跳推理"
+    },
+    {
+      "id": "B4",
+      "query": "如果茅台明年保持相同增长率，2025年营收大概多少？",
+      "category": "多跳推理"
+    },
+    {
+      "id": "B5",
+      "query": "茅台过去3年营收复合增长率是多少？",
+      "category": "多跳推理"
+    },
+    {
+      "id": "C1",
+      "query": "它去年的净利润是多少？",
+      "category": "指代消解"
+    },
+    {
+      "id": "C2",
+      "query": "那家公司的股价现在多少？",
+      "category": "指代消解"
+    },
+    {
+      "id": "C3",
+      "query": "继续，上次说的那个分析",
+      "category": "指代消解"
+    },
+    {
+      "id": "C4",
+      "query": "同样条件放到五粮液上呢？",
+      "category": "指代消解"
+    },
+    {
+      "id": "C5",
+      "query": "为什么营收增长但利润率下降了？",
+      "category": "指代消解"
+    },
+    {
+      "id": "D1",
+      "query": "这两个差不多，为什么选这个？",
+      "category": "隐含意图"
+    },
+    {
+      "id": "D2",
+      "query": "和行业平均比怎么样？",
+      "category": "隐含意图"
+    },
+    {
+      "id": "D3",
+      "query": "茅台现在还能买吗？",
+      "category": "隐含意图"
+    },
+    {
+      "id": "D4",
+      "query": "这公司有没有护城河？",
+      "category": "隐含意图"
+    },
+    {
+      "id": "D5",
+      "query": "三年后大概率多少？",
+      "category": "隐含意图"
+    },
+    {
+      "id": "E1",
+      "query": "那个大公司",
+      "category": "模糊表述"
+    },
+    {
+      "id": "E2",
+      "query": "他们的最新年报",
+      "category": "模糊表述"
+    },
+    {
+      "id": "E3",
+      "query": "业绩最好的季度是哪季",
+      "category": "模糊表述"
+    },
+    {
+      "id": "E4",
+      "query": "主要靠什么赚钱",
+      "category": "模糊表述"
+    },
+    {
+      "id": "E5",
+      "query": "同比变化大吗",
+      "category": "模糊表述"
+    },
+    {
+      "id": "F1",
+      "query": "查茅台营收，然后和行业平均对比，再计算超额收益",
+      "category": "复合意图"
+    },
+    {
+      "id": "F2",
+      "query": "帮我算一下茅台ROE，然后判断这个水平在行业里算什么档次",
+      "category": "复合意图"
+    },
+    {
+      "id": "F3",
+      "query": "五粮液和茅台谁更赚钱？给出具体数据支撑结论",
+      "category": "复合意图"
+    },
+    {
+      "id": "F4",
+      "query": "茅台的市值现在是多少？换算成美元呢？",
+      "category": "复合意图"
+    },
+    {
+      "id": "F5",
+      "query": "把茅台近5年的营收做成表格，然后分析趋势",
+      "category": "复合意图"
+    }
+  ],
+  "rewrite_modes": [
+    "rule",
+    "llm",
+    "hyde",
+    "expand",
+    "hyde_expand"
+  ],
+  "env_check": {
+    "minimax": {
+      "status": "OK",
+      "response_preview": "The user says \"hi\". This is"
+    },
+    "embedding": {
+      "status": "OK",
+      "embedding_dim": 4096
+    },
+    "reranker": {
+      "status": "DEGRADED",
+      "healthy": false
+    },
+    "retrieval_index": {
+      "status": "OK",
+      "chunk_count": 2710
+    },
+    "config": {
+      "model_provider": "anthropic_compatible",
+      "model_name": "MiniMax-M2.7",
+      "embedding_model": "qwen3-embedding",
+      "rerank_model": "BAAI/bge-reranker-v2-m3",
+      "retrieval_top_k": 6,
+      "rerank_top_k": 3,
+      "retrieval_fusion_mode": "weighted_sum",
+      "lexical_weight": 0.35,
+      "tfidf_weight": 0.25,
+      "embedding_weight": 0.4
+    }
+  }
+}

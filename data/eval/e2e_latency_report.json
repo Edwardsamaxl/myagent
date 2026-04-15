@@ -1,0 +1,48 @@
+{
+  "test_methodology": "Real RAGChain.execute() with InMemoryHybridRetriever - no LLM generation",
+  "dataset_size": 5,
+  "stage_latency_stats": {
+    "rewrite_ms": {
+      "avg_ms": 0.2,
+      "p50_ms": 0,
+      "p95_ms": 1,
+      "p99_ms": 1,
+      "min_ms": 0,
+      "max_ms": 1,
+      "count": 5
+    },
+    "retrieval_ms": {
+      "avg_ms": 1422.0,
+      "p50_ms": 1408,
+      "p95_ms": 1503,
+      "p99_ms": 1503,
+      "min_ms": 1361,
+      "max_ms": 1503,
+      "count": 5
+    },
+    "rerank_ms": {
+      "avg_ms": 0.0,
+      "p50_ms": 0,
+      "p95_ms": 0,
+      "p99_ms": 0,
+      "min_ms": 0,
+      "max_ms": 0,
+      "count": 5
+    },
+    "total_ms": {
+      "avg_ms": 1422.2,
+      "p50_ms": 1408,
+      "p95_ms": 1504,
+      "p99_ms": 1504,
+      "min_ms": 1361,
+      "max_ms": 1504,
+      "count": 5
+    }
+  },
+  "stage_percentages": {
+    "rewrite_ms": 0.0,
+    "retrieval_ms": 100.0,
+    "rerank_ms": 0.0
+  },
+  "bottleneck": "total_ms"
+}

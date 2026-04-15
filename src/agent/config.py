@@ -38,6 +38,7 @@ class AgentConfig:
     retrieval_lexical_weight: float
     retrieval_tfidf_weight: float
     retrieval_embedding_weight: float
+    retrieval_numeric_weight: float
     embedding_enabled: bool
     embedding_provider: str
     embedding_model: str
@@ -45,6 +46,8 @@ class AgentConfig:
     rag_enabled: bool
     trace_file: Path
     eval_records_file: Path
+    # MCP 服务器配置: name -> url ("stdio" 或 "http://...")
+    mcp_servers: dict[str, str]
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -86,6 +89,7 @@ class AgentConfig:
             retrieval_lexical_weight=float(os.getenv("RETRIEVAL_LEXICAL_WEIGHT", "0.35")),
             retrieval_tfidf_weight=float(os.getenv("RETRIEVAL_TFIDF_WEIGHT", "0.25")),
             retrieval_embedding_weight=float(os.getenv("RETRIEVAL_EMBEDDING_WEIGHT", "0.40")),
+            retrieval_numeric_weight=float(os.getenv("RETRIEVAL_NUMERIC_WEIGHT", "0.0")),
             embedding_enabled=os.getenv("EMBEDDING_ENABLED", "true").strip().lower()
             in {"1", "true", "yes", "on"},
             embedding_provider=os.getenv("EMBEDDING_PROVIDER", "").strip().lower(),
@@ -95,5 +99,11 @@ class AgentConfig:
             use_coordinator=os.getenv("USE_COORDINATOR", "false").strip().lower() in {"1", "true", "yes", "on"},
             trace_file=trace_file,
             eval_records_file=eval_records_file,
+            # MCP 服务器配置: 格式 "name:url,name:url" 如 "filesystem:stdio,github:stdio"
+            mcp_servers={
+                part.split(":", 1)[0]: part.split(":", 1)[1]
+                for part in os.getenv("MCP_SERVERS", "").split(",")
+                if ":" in part and part.strip()
+            },
         )
 

@@ -11,8 +11,10 @@ class PlanStepAction(str, Enum):
     WEB = "web"                  # 网络搜索
     MEMORY = "memory"            # 记忆操作
     SYNTHESIZE = "synthesize"    # 汇总生成
-    AGENT_LOOP = "agent_loop"    # 保留：通用工具循环
-    CLARIFY = "clarify"          # 保留：澄清问题
+    AGENT_LOOP = "agent_loop"    # 保留：通用工具循环（兼容旧代码）
+    CLARIFY = "clarify"          # 澄清问题
+    REACT = "react"               # 单步 ReAct 工具调用
+    COORDINATOR = "coordinator"   # 多步规划协调
 
 
 class PlanStepStatus(str, Enum):

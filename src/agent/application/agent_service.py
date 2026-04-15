@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import os
+import asyncio
 from dataclasses import asdict
 from typing import Any
 
 from .rag_agent_service import RagAgentService
+from ..rag.evidence_format import format_evidence_block_from_api_dicts
 from ..config import AgentConfig
-from ..core.agent_loop import SimpleAgent
 from ..core.dialogue import SessionMetaStore, classify_intent
-from ..core.dialogue.intent_schema import IntentKind
+from ..core.dialogue.intent_schema import IntentKind, IntentTier, SubIntent, IntentResult
+from ..core.router import AgentRouter, Route
+from ..core.routing import LLMRouterAgent, RouteType
 from ..core.memory_store import MemoryStore
 from ..core.planning import Coordinator, build_turn_plan
 from ..core.planning.langgraph_agent import LangGraphAgent
@@ -16,6 +19,7 @@ from ..core.session_store import SessionStore
 from ..core.skill_store import SkillStore
 from ..llm.providers import build_model_provider, supported_model_providers
 from ..tools.registry import default_tools
+from ..tools.mcp import MCPToolManager
 
 
 class AgentService:
@@ -44,6 +48,9 @@ class AgentService:
         self.tools = default_tools(
             self.memory_store, self.skill_store, self.config.workspace_dir, rag_service=self.rag
         )
+        # MCP 工具管理
+        self.mcp_manager = MCPToolManager()
+        asyncio.run(self._connect_mcp_servers_async())
         self.agent = LangGraphAgent(config=self.config, model=self.model, tools=self.tools)
         # Coordinator（多 Agent 模式）
         self.coordinator = Coordinator(
@@ -51,11 +58,53 @@ class AgentService:
             model=self.model,
             tools=self.tools,
         )
+        # LLM Router（LLM 驱动的路由决策，优先于 AgentRouter）
+        self.llm_router = LLMRouterAgent(model_provider=self.model, config=asdict(self.config))
 
     def _ensure_dirs(self) -> None:
         self.config.data_dir.mkdir(parents=True, exist_ok=True)
         self.config.workspace_dir.mkdir(parents=True, exist_ok=True)
         self.config.skills_dir.mkdir(parents=True, exist_ok=True)
+
+    async def _connect_mcp_servers_async(self) -> None:
+        """异步连接 MCP 服务器并注册其工具。"""
+        if not self.config.mcp_servers:
+            return
+        for name, cmd in self.config.mcp_servers.items():
+            try:
+                self.mcp_manager.add_server(name, "stdio", command=cmd)
+                await self.mcp_manager.connect_server(name)
+                print(f"[AgentService] MCP 服务器 {name} 连接成功")
+                # 将 MCP 工具合并到 self.tools
+                client = self.mcp_manager.get_client(name)
+                if client:
+                    for mcp_tool in client.list_tools():
+                        # 转换为 SimpleAgent 期望的格式: name, description, func
+                        tool_name = mcp_tool.schema.name
+                        tool_desc = mcp_tool.schema.description
+                        # MCP 工具的 handler 是 async 的，需要包装
+                        async_handler = mcp_tool.handler
+
+                        def make_sync_wrapper(ah):
+                            def wrapper(input_str: str) -> str:
+                                import concurrent.futures
+
+                                def run_async():
+                                    return asyncio.run(ah(None, input=input_str))
+
+                                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                                    future = pool.submit(run_async)
+                                    return future.result(timeout=30)
+                            return wrapper
+
+                        self.tools[tool_name] = type('Tool', (), {
+                            'name': tool_name,
+                            'description': tool_desc,
+                            'func': make_sync_wrapper(async_handler)
+                        })()
+                        print(f"  - 注册 MCP 工具: {tool_name}")
+            except Exception as exc:
+                print(f"[AgentService] MCP 服务器 {name} 连接失败: {exc}")
 
     def build_long_context(self) -> str:
         memory = self.memory_store.read()
@@ -69,20 +118,6 @@ class AgentService:
         messages.append({"role": "user", "content": user_text})
         messages.append({"role": "assistant", "content": assistant_text})
         self.session_store.set_history(session_id, messages)
-
-    def _should_use_coordinator(self, user_input: str) -> bool:
-        """判断是否使用 Coordinator 模式
-
-        启发式规则：
-        - 问题较长（> 50 字符）
-        - 包含多个关键词（数据、年份、计算等）
-        """
-        if not self.config.use_coordinator:
-            return False
-        return len(user_input) > 50 or any(
-            k in user_input.lower()
-            for k in ["多少", "增长", "同比", "年度", "报告", "计算", "对比", "分析"]
-        )
 
     def chat(
         self,
@@ -102,14 +137,35 @@ class AgentService:
 
         intent = classify_intent(turn_text, history)
 
-        if intent.intent == IntentKind.AMBIGUOUS:
-            plan = build_turn_plan(intent=intent, rag_will_run=False)
+        # 使用 LLMRouterAgent 决定路由，失败时 fallback 到 AgentRouter
+        try:
+            llm_context = {
+                "available_tools": list(self.tools.keys()),
+            }
+            llm_decision = self.llm_router.route(turn_text, llm_context)
+            # 将 RouteType 映射为 Route
+            route_type_to_route = {
+                RouteType.SINGLE_STEP: Route.ReAct,
+                RouteType.MULTI_STEP: Route.Coordinator,
+                RouteType.CLARIFY: Route.Clarify,
+            }
+            decision = RouterDecision(
+                route=route_type_to_route.get(llm_decision.route_type, Route.ReAct),
+                confidence=llm_decision.confidence,
+                reasoning=f"[LLM Router] {llm_decision.reasoning}",
+                estimated_steps=3 if llm_decision.route_type == RouteType.MULTI_STEP else 1,
+            )
+        except Exception:
+            router = AgentRouter()
+            decision = router.decide(turn_text, history, intent)
+
+        if decision.route == Route.Clarify:
+            clarify = (intent.clarify_prompt or "请补充更多信息。").strip()
             meta.phase = "awaiting_clarification"
             meta.pending_context = turn_text
-            meta.last_intent = intent.intent.value
-            meta.last_plan_summary = plan.summary()
+            meta.last_intent = intent.intent
+            meta.last_plan_summary = decision.reasoning
             self.session_meta_store.put(session_id, meta)
-            clarify = (intent.clarify_prompt or "请补充更多信息。").strip()
             self._append_turn_to_session(session_id, history, user_message, clarify)
             return {
                 "answer": clarify,
@@ -121,17 +177,26 @@ class AgentService:
 
         meta.pending_context = ""
         meta.phase = "idle"
-        plan = build_turn_plan(intent=intent, rag_will_run=rag_on)
-        meta.last_intent = intent.intent.value
+        plan = build_turn_plan(intent=intent, rag_will_run=rag_on, router_decision=decision)
+        meta.last_intent = intent.intent
         meta.last_plan_summary = plan.summary()
         self.session_meta_store.put(session_id, meta)
 
-        # 检查是否使用 Coordinator 模式
-        if self._should_use_coordinator(turn_text):
+        # RAG→Agent 路由：知识型/混合意图且 RAG 开启时，由 Agent 自主决定何时调用 search_knowledge_base 工具
+        # rag_result 为 None 表示 Agent 会按需调用工具（不再预调用 rag.answer()）
+        rag_result = None
+        rag_hits_for_context: list[dict[str, Any]] = []
+        # 注入检索证据到用户消息：若 RAG 开启，Agent 会通过 search_knowledge_base 工具按需检索
+        # turn_text 不再预注入证据块，由工具返回后经 Agent 自行决定如何使用
+        turn_text_with_evidence = turn_text
+
+        # 基于 AgentRouter 决策进行路由
+        if decision.route == Route.Coordinator:
             coord_result = self.coordinator.run(
-                user_input=turn_text,
+                user_input=turn_text_with_evidence,
                 history_messages=history,
                 long_context=self.build_long_context(),
+                rag_hits=rag_hits_for_context,
             )
             self._append_turn_to_session(session_id, history, user_message, coord_result.answer)
             return {
@@ -140,11 +205,12 @@ class AgentService:
                 "tool_calls": coord_result.tool_calls,
                 "session_id": session_id,
                 "plan_id": coord_result.plan_id,
-                "rag": None,
+                "rag": rag_result,
             }
 
+        # Route.ReAct
         result = self.agent.run(
-            user_input=turn_text,
+            user_input=turn_text_with_evidence,
             history_messages=history,
             long_context=self.build_long_context(),
         )
@@ -154,7 +220,7 @@ class AgentService:
             "steps_used": result.steps_used,
             "tool_calls": result.tool_calls,
             "session_id": session_id,
-            "rag": None,
+            "rag": rag_result,
         }
 
     def update_model(self, provider: str, model_name: str) -> dict[str, str]:
@@ -252,4 +318,3 @@ class AgentService:
 
     def get_metrics(self) -> dict[str, float | int | None]:
         return self.rag.get_metrics()
-

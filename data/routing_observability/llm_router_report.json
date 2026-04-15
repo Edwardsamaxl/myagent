@@ -1,0 +1,249 @@
+{
+  "test_info": {
+    "total_queries": 23,
+    "correct": 8,
+    "incorrect": 15,
+    "accuracy": 0.34782608695652173
+  },
+  "latency_stats": {
+    "average_ms": 4254.869565217391,
+    "min_ms": 460,
+    "max_ms": 22404,
+    "total_latency_ms": 97862
+  },
+  "category_breakdown": {
+    "single_step": {
+      "correct": 3,
+      "total": 8,
+      "accuracy": 0.375
+    },
+    "multi_step": {
+      "correct": 4,
+      "total": 5,
+      "accuracy": 0.8
+    },
+    "clarify": {
+      "correct": 1,
+      "total": 10,
+      "accuracy": 0.1
+    }
+  },
+  "results": [
+    {
+      "query": "现在几点",
+      "expected_route": "single_step",
+      "actual_route": "single_step",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "简单工具调用",
+      "latency_ms": 6148,
+      "description": "TOOL_ONLY: 时间查询"
+    },
+    {
+      "query": "计算 1+1",
+      "expected_route": "single_step",
+      "actual_route": "single_step",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "简单数学计算，只需调用一次 calculate 工具即可完成",
+      "latency_ms": 7295,
+      "description": "TOOL_ONLY: 简单计算"
+    },
+    {
+      "query": "今天日期是什么",
+      "expected_route": "single_step",
+      "actual_route": "clarify",
+      "correct": false,
+      "confidence": 0.0,
+      "reasoning": "无法解析LLM响应，默认澄清",
+      "latency_ms": 22404,
+      "description": "TOOL_ONLY: 日期查询"
+    },
+    {
+      "query": "查看记忆",
+      "expected_route": "single_step",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 996,
+      "description": "TOOL_ONLY: 记忆读取"
+    },
+    {
+      "query": "搜索北京天气",
+      "expected_route": "single_step",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 793,
+      "description": "TOOL_ONLY: 搜索"
+    },
+    {
+      "query": "茅台是哪家公司",
+      "expected_route": "single_step",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 600,
+      "description": "KNOWLEDGE: 简单公司查询"
+    },
+    {
+      "query": "五粮液主营什么",
+      "expected_route": "single_step",
+      "actual_route": "single_step",
+      "correct": true,
+      "confidence": 0.95,
+      "reasoning": "简单知识问答，用户询问五粮液的主营业务，属于单一检索问题",
+      "latency_ms": 4183,
+      "description": "KNOWLEDGE: 业务范围查询"
+    },
+    {
+      "query": "茅台的成立时间",
+      "expected_route": "single_step",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 1255,
+      "description": "KNOWLEDGE: 简单事实查询"
+    },
+    {
+      "query": "查茅台营收并计算增长率",
+      "expected_route": "multi_step",
+      "actual_route": "multi_step",
+      "correct": true,
+      "confidence": 0.92,
+      "reasoning": "需要先通过 search 工具检索茅台的营收数据，再通过 calculate 工具计算增长率，属于两步顺序调用",
+      "latency_ms": 7909,
+      "description": "MIXED: 检索+计算"
+    },
+    {
+      "query": "检索财务数据并分析原因",
+      "expected_route": "multi_step",
+      "actual_route": "multi_step",
+      "correct": true,
+      "confidence": 0.85,
+      "reasoning": "查询明确包含两个步骤：①使用 search 工具检索财务数据，②对检索结果进行原因分析。需要顺序执行两步操作，属于多步路由。",
+      "latency_ms": 6435,
+      "description": "MIXED: 数据+分析"
+    },
+    {
+      "query": "对比茅台和五粮液的营收",
+      "expected_route": "multi_step",
+      "actual_route": "multi_step",
+      "correct": true,
+      "confidence": 0.92,
+      "reasoning": "需要分别检索茅台和五粮液的营收数据，然后进行对比分析，至少需要两次 search 工具调用",
+      "latency_ms": 12699,
+      "description": "MIXED: 多实体对比"
+    },
+    {
+      "query": "查营收并生成报告",
+      "expected_route": "multi_step",
+      "actual_route": "multi_step",
+      "correct": true,
+      "confidence": 0.88,
+      "reasoning": "需要先通过 search 工具检索营收数据，再基于检索结果生成报告，属于两步顺序操作：检索 → 生成报告",
+      "latency_ms": 11568,
+      "description": "MIXED: 检索+报告"
+    },
+    {
+      "query": "你好",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 681,
+      "description": "CHITCHAT: 问候"
+    },
+    {
+      "query": "今天心情不错",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 777,
+      "description": "CHITCHAT: 闲聊"
+    },
+    {
+      "query": "谢谢你的帮助",
+      "expected_route": "clarify",
+      "actual_route": "clarify",
+      "correct": true,
+      "confidence": 0.98,
+      "reasoning": "用户只是表达感谢，属于礼貌性寒暄，无需调用任何工具，也不涉及具体的信息查询或计算任务。",
+      "latency_ms": 9370,
+      "description": "CHITCHAT: 感谢"
+    },
+    {
+      "query": "那个",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 629,
+      "description": "AMBIGUOUS: 单独指代词"
+    },
+    {
+      "query": "继续",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 559,
+      "description": "AMBIGUOUS: 继续上句"
+    },
+    {
+      "query": "怎么了",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 549,
+      "description": "AMBIGUOUS: 单独疑问词"
+    },
+    {
+      "query": "嗯",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 460,
+      "description": "AMBIGUOUS: 简单语气词"
+    },
+    {
+      "query": "帮我查一下",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 511,
+      "description": "AMBIGUOUS: 无宾语查询"
+    },
+    {
+      "query": "说一下",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 719,
+      "description": "AMBIGUOUS: 无内容查询"
+    },
+    {
+      "query": "继续刚才的",
+      "expected_route": "clarify",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 861,
+      "description": "AMBIGUOUS: 指代不明"
+    },
+    {
+      "query": "分析一下",
+      "expected_route": "multi_step",
+      "actual_route": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "latency_ms": 461,
+      "description": "KNOWLEDGE: 需要分析但无具体对象"
+    }
+  ]
+}

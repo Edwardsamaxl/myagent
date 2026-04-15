@@ -44,7 +44,27 @@
       "Bash(powershell:*)",
       "Bash(sed:*)",
       "Bash(\"E:/CursorProject/myagent/docs/work-summary-2026-04-06.md\":*)",
-      "Bash(timeout 180 python:*)"
+      "Bash(timeout 180 python:*)",
+      "Bash(EMBEDDING_ENABLED=false python:*)",
+      "Bash(PYTHONIOENCODING=utf-8:*)",
+      "Bash(where npx:*)",
+      "Bash(echo MCP_SERVERS: $MCP_SERVERS:*)",
+      "Bash(npm install:*)",
+      "Bash(npm search:*)",
+      "Bash(npm:*)",
+      "Bash(exa-mcp-server:*)",
+      "Bash(echo:*)",
+      "mcp__plugin_everything-claude-code_exa__web_search_exa",
+      "mcp__plugin_everything-claude-code_exa__web_fetch_exa",
+      "mcp__plugin_oh-my-claudecode_t__state_write",
+      "Bash(sort:*)",
+      "mcp__plugin_oh-my-claudecode_t__state_clear",
+      "mcp__plugin_oh-my-claudecode_t__state_list_active",
+      "Bash(PYTHONPATH=src python:*)",
+      "Bash(\"E:\\\\CursorProject\\\\myagent\\\\docs\\\\ROUTING_EVAL_PLAN_2026-04-14.md\":*)",
+      "Bash(claude plugin:*)",
+      "Bash(claude:*)",
+      "Bash(exit 0:*)"
     ]
   }
 }

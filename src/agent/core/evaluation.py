@@ -59,9 +59,9 @@ def load_eval_rows_from_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def substring_match(expected: str, actual: str) -> bool:
-    """离线指标：参考答案是否以子串形式出现在模型答案中（去空白后比较）。"""
-    e = expected.replace(" ", "").replace("\n", "").strip()
-    a = actual.replace(" ", "").replace("\n", "").strip()
+    """离线指标：参考答案是否以子串形式出现在模型答案中（去空白 + 数字归一化后比较）。"""
+    e = _normalize_numbers(expected).replace(" ", "").replace("\n", "").strip()
+    a = _normalize_numbers(actual).replace(" ", "").replace("\n", "").strip()
     if not e:
         return False
     return e in a

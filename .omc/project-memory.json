@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1775470830524,
+  "lastScanned": 1776233016433,
   "projectRoot": "E:\\CursorProject\\myagent",
   "techStack": {
     "languages": [
@@ -36,7 +36,8 @@
     "mainDirectories": [
       "docs",
       "scripts",
-      "src"
+      "src",
+      "tests"
     ],
     "gitBranches": null
   },
@@ -46,14 +47,14 @@
       "path": "-Force",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1775470830475,
+      "lastAccessed": 1776233016339,
       "keyFiles": []
     },
     "data": {
       "path": "data",
       "purpose": "Data files",
       "fileCount": 1,
-      "lastAccessed": 1775470830476,
+      "lastAccessed": 1776233016341,
       "keyFiles": [
         "README.md"
       ]
@@ -61,54 +62,72 @@
     "docs": {
       "path": "docs",
       "purpose": "Documentation",
-      "fileCount": 9,
-      "lastAccessed": 1775470830476,
+      "fileCount": 4,
+      "lastAccessed": 1776233016341,
       "keyFiles": [
-        "agent-operation-manual.md",
-        "agent-roles.md",
-        "cleanup-summary.md",
-        "coordination.md",
-        "coordinator-design.md"
+        "FILE_TREE.md",
+        "PRD_ROUTING_OBSERVABILITY_2026-04-12.md",
+        "ROUTING_EVAL_PLAN_2026-04-14.md",
+        "WORK_SUMMARY_2026-04-12.md"
       ]
     },
     "runtime": {
       "path": "runtime",
       "purpose": null,
-      "fileCount": 6,
-      "lastAccessed": 1775470830477,
+      "fileCount": 4,
+      "lastAccessed": 1776233016342,
       "keyFiles": [
         "eval_records.jsonl",
-        "INDEX.json",
-        "README.md",
         "sessions.json",
-        "sessions_meta.json"
+        "sessions_meta.json",
+        "traces.jsonl"
       ]
     },
     "scripts": {
       "path": "scripts",
       "purpose": "Build/utility scripts",
-      "fileCount": 17,
-      "lastAccessed": 1775470830478,
+      "fileCount": 5,
+      "lastAccessed": 1776233016343,
       "keyFiles": [
-        "dump_chunks.py",
-        "eval_bm25_ablation.py",
-        "eval_embedding_ab.py",
-        "eval_generation_closure.py",
-        "eval_generation_policy_ab.py"
+        "eval_rigorous.py",
+        "extract_pdf.py",
+        "extract_pdf_to_md.py",
+        "run_ingest.py",
+        "test_llm_router.py"
       ]
     },
     "src": {
       "path": "src",
       "purpose": "Source code",
       "fileCount": 0,
-      "lastAccessed": 1775470830479,
+      "lastAccessed": 1776233016344,
       "keyFiles": []
+    },
+    "state": {
+      "path": "state",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1776233016345,
+      "keyFiles": [
+        "cancel-signal-state.json"
+      ]
+    },
+    "tests": {
+      "path": "tests",
+      "purpose": "Test files",
+      "fileCount": 3,
+      "lastAccessed": 1776233016346,
+      "keyFiles": [
+        "conftest.py",
+        "ROUTING_TESTS_README.md",
+        "__init__.py"
+      ]
     },
     "workspace": {
       "path": "workspace",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1775470830480,
+      "lastAccessed": 1776233016347,
       "keyFiles": [
         "MEMORY.md"
       ]
@@ -116,303 +135,123 @@
   },
   "hotPaths": [
     {
-      "path": "src\\agent\\core\\planning\\coordinator.py",
-      "accessCount": 27,
-      "lastAccessed": 1775552527272,
+      "path": "docs\\ROUTING_EVAL_PLAN_2026-04-14.md",
+      "accessCount": 15,
+      "lastAccessed": 1776242278570,
+      "type": "file"
+    },
+    {
+      "path": "scripts\\eval_rigorous.py",
+      "accessCount": 11,
+      "lastAccessed": 1776239477711,
       "type": "file"
     },
     {
       "path": "",
-      "accessCount": 27,
-      "lastAccessed": 1775552551998,
-      "type": "directory"
-    },
-    {
-      "path": "scripts\\eval_full_pipeline.py",
-      "accessCount": 18,
-      "lastAccessed": 1775550052818,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\rerank.py",
-      "accessCount": 16,
-      "lastAccessed": 1775552535450,
-      "type": "directory"
-    },
-    {
-      "path": "docs\\interview-preparation-guide.md",
-      "accessCount": 14,
-      "lastAccessed": 1775535650591,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\config.py",
-      "accessCount": 14,
-      "lastAccessed": 1775552527187,
-      "type": "directory"
-    },
-    {
-      "path": "docs\\unfinished-tasks.md",
-      "accessCount": 13,
-      "lastAccessed": 1775475325727,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\evaluation.py",
-      "accessCount": 11,
-      "lastAccessed": 1775552527229,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\application\\rag_agent_service.py",
-      "accessCount": 10,
-      "lastAccessed": 1775538524057,
-      "type": "directory"
-    },
-    {
-      "path": ".env.example",
-      "accessCount": 10,
-      "lastAccessed": 1775552543683,
-      "type": "directory"
-    },
-    {
-      "path": "src\\agent\\core\\retrieval.py",
-      "accessCount": 9,
-      "lastAccessed": 1775552535400,
-      "type": "directory"
-    },
-    {
-      "path": "src\\agent\\application\\agent_service.py",
-      "accessCount": 8,
-      "lastAccessed": 1775540903202,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\tools\\registry.py",
-      "accessCount": 7,
-      "lastAccessed": 1775538525867,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\planning\\langgraph_agent.py",
-      "accessCount": 7,
-      "lastAccessed": 1775540547226,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\planning\\synthesizer.py",
       "accessCount": 6,
-      "lastAccessed": 1775540547206,
-      "type": "file"
+      "lastAccessed": 1776234284671,
+      "type": "directory"
     },
     {
-      "path": "src",
+      "path": "src\\agent\\rag\\rerank.py",
       "accessCount": 6,
-      "lastAccessed": 1775552477816,
-      "type": "directory"
-    },
-    {
-      "path": "docs\\coordinator-design.md",
-      "accessCount": 5,
-      "lastAccessed": 1775475101005,
+      "lastAccessed": 1776237150436,
       "type": "file"
     },
     {
-      "path": "CLAUDE.md",
-      "accessCount": 5,
-      "lastAccessed": 1775476070520,
-      "type": "directory"
-    },
-    {
-      "path": "src\\agent\\core\\planning\\plan_schema.py",
-      "accessCount": 5,
-      "lastAccessed": 1775538502489,
-      "type": "file"
-    },
-    {
-      "path": "MEMORY.md",
+      "path": ".env",
       "accessCount": 4,
-      "lastAccessed": 1775476033618,
-      "type": "directory"
-    },
-    {
-      "path": "src\\agent\\core\\planning\\worker_result.py",
-      "accessCount": 4,
-      "lastAccessed": 1775538502955,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\planning\\agent_graph.py",
-      "accessCount": 4,
-      "lastAccessed": 1775538514160,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\tools",
-      "accessCount": 3,
-      "lastAccessed": 1775475040459,
+      "lastAccessed": 1776234054295,
       "type": "directory"
     },
     {
       "path": "src\\agent",
       "accessCount": 3,
-      "lastAccessed": 1775475104036,
+      "lastAccessed": 1776234252429,
       "type": "directory"
+    },
+    {
+      "path": "src\\agent\\core\\routing\\llm_router.py",
+      "accessCount": 2,
+      "lastAccessed": 1776235905191,
+      "type": "file"
+    },
+    {
+      "path": "src\\agent\\config.py",
+      "accessCount": 1,
+      "lastAccessed": 1776233129962,
+      "type": "file"
+    },
+    {
+      "path": "src\\agent\\core\\routing\\rag_chain.py",
+      "accessCount": 1,
+      "lastAccessed": 1776234212944,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 1,
+      "lastAccessed": 1776234241754,
+      "type": "directory"
+    },
+    {
+      "path": "src\\agent\\interfaces\\web_app.py",
+      "accessCount": 1,
+      "lastAccessed": 1776234246030,
+      "type": "directory"
+    },
+    {
+      "path": "src\\agent\\application\\rag_agent_service.py",
+      "accessCount": 1,
+      "lastAccessed": 1776234263910,
+      "type": "file"
     },
     {
       "path": "src\\agent\\llm\\embeddings.py",
-      "accessCount": 3,
-      "lastAccessed": 1775538482243,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\planning\\__init__.py",
-      "accessCount": 3,
-      "lastAccessed": 1775538491095,
-      "type": "file"
-    },
-    {
-      "path": "data\\eval\\retrieval_test_set.json",
-      "accessCount": 3,
-      "lastAccessed": 1775538524216,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\planning\\nodes.py",
-      "accessCount": 3,
-      "lastAccessed": 1775540547161,
-      "type": "file"
-    },
-    {
-      "path": "docs\\interview-learning-plan.md",
-      "accessCount": 2,
-      "lastAccessed": 1775473476130,
-      "type": "file"
-    },
-    {
-      "path": "docs\\resume-audit.md",
-      "accessCount": 2,
-      "lastAccessed": 1775473476277,
-      "type": "file"
-    },
-    {
-      "path": "docs\\agent-design\\loop.md",
-      "accessCount": 2,
-      "lastAccessed": 1775475087561,
-      "type": "file"
-    },
-    {
-      "path": "docs\\agent-design\\README.md",
-      "accessCount": 2,
-      "lastAccessed": 1775475087687,
-      "type": "file"
-    },
-    {
-      "path": "docs\\agent-design\\mvp-scope.md",
-      "accessCount": 2,
-      "lastAccessed": 1775475087739,
-      "type": "file"
-    },
-    {
-      "path": "docs\\agent-design\\rag-bridge.md",
-      "accessCount": 2,
-      "lastAccessed": 1775475097901,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\agent_loop.py",
-      "accessCount": 2,
-      "lastAccessed": 1775475118781,
-      "type": "file"
-    },
-    {
-      "path": "data\\eval\\week1_eval_set.jsonl",
-      "accessCount": 2,
-      "lastAccessed": 1775535586513,
-      "type": "file"
-    },
-    {
-      "path": "src\\agent\\core\\generation.py",
-      "accessCount": 2,
-      "lastAccessed": 1775536120885,
-      "type": "file"
-    },
-    {
-      "path": ".env",
-      "accessCount": 2,
-      "lastAccessed": 1775549430413,
-      "type": "directory"
-    },
-    {
-      "path": "docs\\resume-project-profile.md",
       "accessCount": 1,
-      "lastAccessed": 1775473005634,
+      "lastAccessed": 1776234296025,
       "type": "file"
     },
     {
-      "path": "docs\\resume-qna.md",
+      "path": "C:\\Users\\Ed\\AppData\\Local\\Temp\\claude\\E--CursorProject-myagent\\tasks\\bdl8q1yxl.output",
       "accessCount": 1,
-      "lastAccessed": 1775473005654,
+      "lastAccessed": 1776236117528,
       "type": "file"
     },
     {
-      "path": "docs\\agent-design\\dialogue-planning.md",
+      "path": "src\\agent\\llm\\providers.py",
       "accessCount": 1,
-      "lastAccessed": 1775475080709,
+      "lastAccessed": 1776237451910,
       "type": "file"
     },
     {
-      "path": "src\\agent\\tools\\__init__.py",
+      "path": "scripts\\append_results.py",
       "accessCount": 1,
-      "lastAccessed": 1775475087707,
+      "lastAccessed": 1776238422616,
       "type": "file"
     },
     {
-      "path": "docs\\agent-design\\observability.md",
+      "path": "C:\\Users\\Ed\\.claude\\.claude\\settings.local.json",
       "accessCount": 1,
-      "lastAccessed": 1775475097874,
+      "lastAccessed": 1776240618550,
       "type": "file"
     },
     {
-      "path": "docs\\agent-design\\data-tools.md",
+      "path": "C:\\Users\\Ed\\.claude\\marketplace.json",
       "accessCount": 1,
-      "lastAccessed": 1775475098327,
+      "lastAccessed": 1776240771424,
       "type": "file"
     },
     {
-      "path": "docs\\agent-design",
+      "path": "C:\\Users\\Ed\\.claude\\plugins\\known_marketplaces.json",
       "accessCount": 1,
-      "lastAccessed": 1775475118999,
-      "type": "directory"
-    },
-    {
-      "path": "docs",
-      "accessCount": 1,
-      "lastAccessed": 1775475119051,
-      "type": "directory"
-    },
-    {
-      "path": "scripts\\eval_retrieval.py",
-      "accessCount": 1,
-      "lastAccessed": 1775475895529,
+      "lastAccessed": 1776240785713,
       "type": "file"
     },
     {
-      "path": "scripts\\eval_generation_samples.py",
+      "path": "C:\\Users\\Ed\\.claude\\plugins\\installed_plugins.json",
       "accessCount": 1,
-      "lastAccessed": 1775475926206,
-      "type": "file"
-    },
-    {
-      "path": "scripts\\eval_generation_policy_current.py",
-      "accessCount": 1,
-      "lastAccessed": 1775475932643,
-      "type": "file"
-    },
-    {
-      "path": "scripts\\eval_small_batch.py",
-      "accessCount": 1,
-      "lastAccessed": 1775475932703,
+      "lastAccessed": 1776241305742,
       "type": "file"
     }
   ],

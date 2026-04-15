@@ -221,12 +221,40 @@ class AnthropicCompatibleProvider(_HTTPChatProvider):
         return headers
 
     def _parse_response(self, data: dict[str, Any]) -> str:
+        # 检查 base_resp 错误状态
+        if "base_resp" in data and isinstance(data["base_resp"], dict):
+            status_code = data["base_resp"].get("status_code", 0)
+            status_msg = data["base_resp"].get("status_msg", "")
+            if status_code != 0:
+                raise ValueError(
+                    f"MiniMax API error: status_code={status_code}, status_msg={status_msg}"
+                )
+
         # Anthropic API 返回格式: {"content": [{"type": "text", "text": "..."}]}
+        # MiniMax 可能返回 thinking 块: [{"type": "thinking", ...}, {"type": "text", "text": "..."}]
+        # 也可能只有 thinking 没有 text
         if "content" in data and isinstance(data["content"], list):
+            text_content = None
+            thinking_content = None
             for item in data["content"]:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    return item.get("text", "")
-        return super()._parse_response(data)
+                if isinstance(item, dict):
+                    if item.get("type") == "text":
+                        text_content = item.get("text", "")
+                        break
+                    elif item.get("type") == "thinking":
+                        thinking_content = item.get("thinking", "")
+            if text_content is not None:
+                return text_content
+            # MiniMax 有时只有 thinking 没有 text，用 thinking 作为响应
+            if thinking_content is not None:
+                return thinking_content
+
+        # OpenAI 兼容格式 fallback
+        if "choices" in data and data["choices"] is not None:
+            return data["choices"][0]["message"]["content"]
+
+        # 无有效响应
+        raise ValueError(f"Unexpected API response format: {str(data)[:200]}")
 
 
 class MockProvider(ModelProvider):

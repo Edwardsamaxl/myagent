@@ -5,12 +5,15 @@ import os
 import time
 
 from ..config import AgentConfig
+from ..core.dialogue import classify_intent, rewrite_for_rag, IntentKind, IntentResult
+from ..core.dialogue.query_rewrite import QueryRewriteResult
 from ..core.evaluation import EvaluationStore
-from ..core.generation import GroundedGenerator
-from ..core.ingestion import DocumentIngestionPipeline
+from ..rag.generation import GroundedGenerator
+from ..rag.ingestion import DocumentIngestionPipeline
 from ..core.observability import TraceEvent, TraceLogger, TraceStage
-from ..core.retrieval import InMemoryHybridRetriever
-from ..core.rerank import SimpleReranker, build_reranker
+from ..rag.retrieval import InMemoryHybridRetriever
+from ..rag.rerank import SimpleReranker, build_reranker
+from ..core.router import classify_query_type, get_weights_for_type, extract_numeric_indicators
 from ..core.schemas import EvalRecord
 from ..llm.embeddings import build_embedding_provider
 from ..llm.providers import ModelProvider
@@ -169,7 +172,34 @@ class RagAgentService:
         trace_id = self.trace_logger.new_trace_id()
         start = time.perf_counter()
         effective_top_k = top_k or self.config.retrieval_top_k
-        hits, retrieval_debug = self.retriever.search_with_debug(question, top_k=effective_top_k)
+
+        # Step 1: Classify intent and rewrite query for RAG
+        intent: IntentResult = classify_intent(question, None)
+        rewritten: str | QueryRewriteResult = rewrite_for_rag(
+            turn_text=question,
+            history=None,
+            intent=intent,
+            model=self.generator.model,
+        )
+        rewritten_query = str(rewritten)
+
+        # Step 2: Classify query type and apply dynamic weights
+        qtype = classify_query_type(rewritten_query)
+        weights = get_weights_for_type(qtype)
+        self.retriever.set_weights(
+            lexical=weights.get("lexical"),
+            tfidf=weights.get("tfidf"),
+            embedding=weights.get("embedding"),
+            numeric=weights.get("numeric"),
+        )
+
+        # Step 3: Extract numeric indicators for keyword boost
+        numeric_indicators = extract_numeric_indicators(rewritten_query)
+
+        # Step 4: Execute retrieval with rewritten query and numeric indicators
+        hits, retrieval_debug = self.retriever.search_with_debug(
+            rewritten_query, top_k=effective_top_k, numeric_indicators=numeric_indicators
+        )
         reranked_hits, rerank_debug = self.reranker.rerank_with_debug(
             query=question,
             hits=hits,

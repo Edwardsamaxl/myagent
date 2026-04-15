@@ -1,0 +1,147 @@
+{
+  "test_methodology": "Real LLM calls to LLMRouterAgent.route() - compare with expected route",
+  "total_queries": 13,
+  "api_errors_excluded": 13,
+  "valid_responses": 0,
+  "correct": 0,
+  "accuracy_percentage": 0,
+  "category_breakdown": {
+    "single_step": {
+      "accuracy": 0,
+      "correct": 0,
+      "total": 4,
+      "api_errors": 4
+    },
+    "multi_step": {
+      "accuracy": 0,
+      "correct": 0,
+      "total": 4,
+      "api_errors": 4
+    },
+    "clarify": {
+      "accuracy": 0,
+      "correct": 0,
+      "total": 5,
+      "api_errors": 5
+    }
+  },
+  "results": [
+    {
+      "query": "现在几点？",
+      "expected": "single_step",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 563
+    },
+    {
+      "query": "计算 1+1",
+      "expected": "single_step",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 630
+    },
+    {
+      "query": "今天日期是什么",
+      "expected": "single_step",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 555
+    },
+    {
+      "query": "查看记忆",
+      "expected": "single_step",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 1572
+    },
+    {
+      "query": "查茅台营收并计算增长率",
+      "expected": "multi_step",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 685
+    },
+    {
+      "query": "检索财务数据并分析原因",
+      "expected": "multi_step",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 498
+    },
+    {
+      "query": "对比茅台和五粮液的营收",
+      "expected": "multi_step",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 477
+    },
+    {
+      "query": "你好",
+      "expected": "clarify",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 476
+    },
+    {
+      "query": "谢谢你的帮助",
+      "expected": "clarify",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 542
+    },
+    {
+      "query": "那个",
+      "expected": "clarify",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 697
+    },
+    {
+      "query": "继续",
+      "expected": "clarify",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 514
+    },
+    {
+      "query": "帮我查一下",
+      "expected": "clarify",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "529 Server Error: Unknown Status Code for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 375
+    },
+    {
+      "query": "分析一下",
+      "expected": "multi_step",
+      "actual": "ERROR",
+      "correct": false,
+      "error": "500 Server Error: Internal Server Error for url: https://api.minimaxi.com/anthropic/v1/messages",
+      "is_api_error": true,
+      "latency_ms": 1821
+    }
+  ]
+}

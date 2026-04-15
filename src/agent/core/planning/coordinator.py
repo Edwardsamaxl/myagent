@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import uuid
-from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any, Callable
 
 from ...config import AgentConfig
 from ...llm.providers import ModelProvider
 from ...tools.registry import Tool
 from .plan_schema import PlanArtifact, PlanStep, PlanStepAction
 from .synthesizer import Synthesizer
+from ..multi_agent.task_notification import NotificationType, TaskNotification
 from .worker_result import WorkerResult
 
 logger = logging.getLogger(__name__)
@@ -103,10 +107,12 @@ class Planner:
         "query_data": PlanStepAction.RAG,
         "query": PlanStepAction.RAG,
         "retrieve": PlanStepAction.RAG,
+        "rag": PlanStepAction.RAG,
         "search": PlanStepAction.WEB,
         "synthesize": PlanStepAction.SYNTHESIZE,
         "summarize": PlanStepAction.SYNTHESIZE,
         "math": PlanStepAction.CALC,
+        "calculate": PlanStepAction.CALC,
     }
 
     def _parse_plan(self, plan_data: dict) -> PlanArtifact:
@@ -155,20 +161,36 @@ class Planner:
 class WorkerExecutor:
     """Worker 执行器：根据 action 类型调用对应的工具"""
 
-    def __init__(self, tools: dict[str, Tool]) -> None:
+    def __init__(
+        self,
+        tools: dict[str, Tool],
+        notify_callback: Callable[[TaskNotification], None] | None = None,
+        shared_rag_hits: dict[str, Any] | None = None,
+    ) -> None:
         self.tools = tools
+        self.notify_callback = notify_callback
+        self.shared_rag_hits = shared_rag_hits or {}
 
-    def execute(self, step: PlanStep, context: dict[str, WorkerResult]) -> WorkerResult:
-        """执行单个步骤，返回结果"""
+    def execute(
+        self,
+        step: PlanStep,
+        context: dict[str, WorkerResult],
+        rag_hits: list[dict] | None = None,
+    ) -> tuple[WorkerResult, list[dict] | None]:
+        """执行单个步骤，返回 (结果, rag_hits如果查询了RAG)
 
+        rag_hits: 共享的 RAG 查询结果（来自其他 Worker）
+        """
         # SYNTHESIZE 步骤不需要工具，由 Synthesizer 直接处理
         if step.action == PlanStepAction.SYNTHESIZE:
-            return WorkerResult(
+            result = WorkerResult(
                 step_id=step.id,
                 action=step.action,
                 status="success",
                 output=step.detail,
             )
+            self._send_notification(step.id, NotificationType.COMPLETED, result, [])
+            return result, None
 
         action_to_tool = {
             PlanStepAction.RAG: "search_knowledge_base",
@@ -179,33 +201,96 @@ class WorkerExecutor:
 
         tool_name = action_to_tool.get(step.action)
         if not tool_name or tool_name not in self.tools:
-            return WorkerResult(
+            result = WorkerResult(
                 step_id=step.id,
                 action=step.action,
                 status="failed",
                 output="",
                 error=f"工具不存在: {tool_name}",
             )
+            self._send_notification(step.id, NotificationType.ERROR, result, [])
+            return result, None
 
         # 对于需要前序结果的步骤，从 context 获取输入
         tool_input = self._build_input(step, context)
 
-        try:
-            result = self.tools[tool_name].func(tool_input)
-            return WorkerResult(
+        # 如果是 RAG 步骤且有共享的 rag_hits，直接使用（避免重复查询）
+        if step.action == PlanStepAction.RAG and rag_hits is not None:
+            output = self._format_rag_hits(rag_hits)
+            result = WorkerResult(
                 step_id=step.id,
                 action=step.action,
                 status="success",
-                output=str(result),
+                output=output,
+                metadata={"rag_hits_shared": True, "chunk_count": len(rag_hits)},
             )
+            self._send_notification(step.id, NotificationType.COMPLETED, result, [step.id])
+            return result, None
+
+        try:
+            raw_result = self.tools[tool_name].func(tool_input)
+
+            # 如果是 RAG 步骤，提取并共享 rag_hits
+            result_rag_hits: list[dict] | None = None
+            if step.action == PlanStepAction.RAG:
+                result_rag_hits = self._extract_rag_hits(raw_result)
+
+            result = WorkerResult(
+                step_id=step.id,
+                action=step.action,
+                status="success",
+                output=str(raw_result),
+            )
+            self._send_notification(step.id, NotificationType.COMPLETED, result, [step.id])
+            return result, result_rag_hits
         except Exception as exc:
-            return WorkerResult(
+            result = WorkerResult(
                 step_id=step.id,
                 action=step.action,
                 status="failed",
                 output="",
                 error=str(exc),
             )
+            self._send_notification(step.id, NotificationType.ERROR, result, [])
+            return result, None
+
+    def _send_notification(
+        self,
+        sender: str,
+        notif_type: NotificationType,
+        worker_result: WorkerResult,
+        deps_met: list[str],
+    ) -> None:
+        """发送 TaskNotification 到 Coordinator"""
+        if self.notify_callback:
+            notification = TaskNotification(
+                sender=sender,
+                type=notif_type,
+                payload=worker_result,
+                dependencies_met=deps_met,
+            )
+            self.notify_callback(notification)
+
+    def _extract_rag_hits(self, raw_result: Any) -> list[dict] | None:
+        """从 RAG 查询结果中提取 hits"""
+        if isinstance(raw_result, dict):
+            return raw_result.get("hits", raw_result.get("results", []))
+        if isinstance(raw_result, list):
+            return raw_result
+        return None
+
+    def _format_rag_hits(self, rag_hits: list[dict]) -> str:
+        """格式化 RAG hits 用于上下文"""
+        if not rag_hits:
+            return ""
+        parts = []
+        for hit in rag_hits[:5]:  # 最多取前5条
+            if isinstance(hit, dict):
+                content = hit.get("content", hit.get("text", str(hit)))
+                parts.append(content)
+            else:
+                parts.append(str(hit))
+        return "\n---\n".join(parts)
 
     # 工具输入前缀清理（当无依赖时）
     _INPUT_PREFIXES: dict[str, tuple[str, ...]] = {
@@ -255,6 +340,16 @@ class CoordinatorResult:
     tool_calls: list[str]            # 所有工具调用记录
 
 
+# RAG 优先级常量
+ACTION_PRIORITY = {
+    PlanStepAction.RAG: 0,
+    PlanStepAction.CALC: 1,
+    PlanStepAction.WEB: 1,
+    PlanStepAction.MEMORY: 1,
+    PlanStepAction.SYNTHESIZE: 2,
+}
+
+
 class Coordinator:
     """Coordinator：主调度器，管理任务分解和执行流程"""
 
@@ -269,17 +364,80 @@ class Coordinator:
         self.tools = tools
         self.planner = Planner(model, config)
         self.synthesizer = Synthesizer(model, config)
-        self.worker_executor = WorkerExecutor(tools)
+        # RAG 互斥锁：保证只有一个 RAG 调用
+        self._rag_lock = threading.Lock()
+        self._rag_completed_hits: list[dict] = []
+        self._rag_executed: bool = False
+        # 连接 TaskNotification 回调
+        self.worker_executor = WorkerExecutor(
+            tools,
+            notify_callback=self._handle_notification,
+        )
+
+    def _handle_notification(self, notification: TaskNotification) -> None:
+        """处理 Worker 发来的 TaskNotification（用于可观测性日志）"""
+        logger.info(
+            f"[TaskNotification] from={notification.sender} "
+            f"type={notification.type.value} deps={notification.dependencies_met}"
+        )
+
+    def _execute_rag_with_lock(
+        self,
+        step: PlanStep,
+        context: dict[str, WorkerResult],
+    ) -> tuple[WorkerResult, list[dict] | None]:
+        """使用 RAG Lock 执行 RAG 步骤，保证只有一个 RAG 调用"""
+        with self._rag_lock:
+            # 如果已经有 RAG 结果，直接使用（跳过重复调用）
+            if self._rag_executed and self._rag_completed_hits:
+                output = self.worker_executor._format_rag_hits(self._rag_completed_hits)
+                result = WorkerResult(
+                    step_id=step.id,
+                    action=step.action,
+                    status="success",
+                    output=output,
+                    metadata={"rag_hits_shared": True, "chunk_count": len(self._rag_completed_hits)},
+                )
+                return result, None
+
+            # 执行 RAG 调用
+            result, new_rag_hits = self.worker_executor.execute(step, context, rag_hits=None)
+
+            # 共享 RAG 结果
+            if new_rag_hits:
+                self._rag_completed_hits = new_rag_hits
+                self._rag_executed = True
+
+            return result, new_rag_hits
+
+    def _get_ready_steps(self, pending: dict[str, PlanStep], results: dict[str, WorkerResult]) -> list[PlanStep]:
+        """返回所有依赖已满足的步骤，按优先级排序"""
+        ready = []
+        for step_id, step in pending.items():
+            deps_met = all(
+                dep in results and results[dep].is_success()
+                for dep in step.depends_on
+            )
+            if deps_met:
+                ready.append(step)
+        return sorted(ready, key=lambda s: ACTION_PRIORITY.get(s.action, 99))
 
     def run(
         self,
         user_input: str,
         history_messages: list[dict] | None = None,
         long_context: str = "",
+        rag_hits: list[dict] | None = None,
     ) -> CoordinatorResult:
         """执行完整的 Coordinator 流程"""
 
         history_messages = history_messages or []
+        rag_hits = rag_hits or []
+
+        # 如果有预取的 rag_hits，先共享给 worker_executor
+        if rag_hits:
+            self._rag_completed_hits.extend(rag_hits)
+            self._rag_executed = True
 
         # Step 1: 任务分解
         plan = self.planner.create_plan(user_input, long_context)
@@ -287,8 +445,8 @@ class Coordinator:
         # Step 2: 执行计划
         worker_results = self._execute_plan(plan)
 
-        # Step 3: 汇总生成
-        answer = self.synthesizer.synthesize(user_input, plan, worker_results)
+        # Step 3: 汇总生成（传入预取的 RAG hits）
+        answer = self.synthesizer.synthesize(user_input, plan, worker_results, rag_hits=rag_hits)
 
         # 收集所有工具调用
         tool_calls = [
@@ -317,15 +475,8 @@ class Coordinator:
             if not pending:
                 break
 
-            # 找出所有依赖已满足且未执行的步骤
-            ready = []
-            for step_id, step in pending.items():
-                deps_met = all(
-                    dep in results and results[dep].is_success()
-                    for dep in step.depends_on
-                )
-                if deps_met:
-                    ready.append(step)
+            # 找出所有依赖已满足且未执行的步骤（按优先级排序）
+            ready = self._get_ready_steps(pending, results)
 
             if not ready:
                 # 无法继续执行（可能是循环依赖或全部失败）
@@ -341,18 +492,29 @@ class Coordinator:
                 pending.clear()
                 break
 
-            # 并行执行所有就绪的步骤（ThreadPoolExecutor 实现真正并行）
-            from concurrent.futures import ThreadPoolExecutor, as_completed
+            # 按优先级分组执行
+            rag_steps = [s for s in ready if s.action == PlanStepAction.RAG]
+            other_steps = [s for s in ready if s.action != PlanStepAction.RAG]
 
             with ThreadPoolExecutor(max_workers=4) as executor:
-                futures = {
-                    executor.submit(self.worker_executor.execute, step, results): step
-                    for step in ready
-                }
+                futures = {}
+
+                # RAG 步骤：使用 Lock 保证互斥
+                for step in rag_steps:
+                    futures[executor.submit(self._execute_rag_with_lock, step, results)] = step
+
+                # 非 RAG 步骤：并行执行，传入已完成的 RAG 结果
+                for step in other_steps:
+                    hits = self._rag_completed_hits if self._rag_executed else None
+                    futures[executor.submit(self.worker_executor.execute, step, results, hits)] = step
+
                 for future in as_completed(futures):
                     step = futures[future]
                     try:
-                        result = future.result()
+                        result, new_rag_hits = future.result()
+                        if new_rag_hits:
+                            self._rag_completed_hits.extend(new_rag_hits)
+                            self._rag_executed = True
                     except Exception as exc:
                         result = WorkerResult(
                             step_id=step.id,
