@@ -52,6 +52,9 @@ class TraceLogger:
         with self._file.open("a", encoding="utf-8") as f:
             f.write(json.dumps(event.to_dict(), ensure_ascii=False) + "\n")
 
+    def new_trace_id(self) -> str:
+        return str(uuid.uuid4())
+
 
 class RouteQuality(str, Enum):
     """路由质量评级。"""

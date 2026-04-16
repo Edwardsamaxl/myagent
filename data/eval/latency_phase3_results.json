@@ -1,0 +1,261 @@
+{
+  "timestamp": "2026-04-16T12:56:01.858989",
+  "test_cases": [
+    {
+      "id": "L1",
+      "query": "茅台是哪家公司？",
+      "route_type": "SINGLE_STEP"
+    },
+    {
+      "id": "L2",
+      "query": "茅台2024年的营收是多少？",
+      "route_type": "MULTI_STEP"
+    },
+    {
+      "id": "L3",
+      "query": "茅台和五粮液的ROE对比",
+      "route_type": "MULTI_STEP"
+    },
+    {
+      "id": "L4",
+      "query": "帮我查查这家公司的情况",
+      "route_type": "CLARIFY"
+    },
+    {
+      "id": "L5",
+      "query": "茅台2024年营收是三年前的几倍？",
+      "route_type": "MULTI_STEP"
+    },
+    {
+      "id": "L6",
+      "query": "五粮液的主营业务是什么？",
+      "route_type": "SINGLE_STEP"
+    },
+    {
+      "id": "L7",
+      "query": "那个大公司的市值多少？",
+      "route_type": "CLARIFY"
+    },
+    {
+      "id": "L8",
+      "query": "茅台过去3年营收复合增长率是多少？",
+      "route_type": "MULTI_STEP"
+    },
+    {
+      "id": "L9",
+      "query": "主要靠什么赚钱",
+      "route_type": "CLARIFY"
+    },
+    {
+      "id": "L10",
+      "query": "把茅台近5年的营收做成表格",
+      "route_type": "MULTI_STEP"
+    }
+  ],
+  "summary": {
+    "valid": 10,
+    "errors": 0,
+    "router_ms": {
+      "p50": 5984.0,
+      "p95": 7502.0,
+      "p99": 7502.0,
+      "avg": 5802.2,
+      "min": 4893.0,
+      "max": 7502.0
+    },
+    "rewrite_ms": {
+      "p50": 8078.0,
+      "p95": 11452.0,
+      "p99": 11452.0,
+      "avg": 7344.9,
+      "min": 3201.0,
+      "max": 11452.0
+    },
+    "retrieval_ms": {
+      "p50": 4298.0,
+      "p95": 8515.0,
+      "p99": 8515.0,
+      "avg": 4761.4,
+      "min": 4137.0,
+      "max": 8515.0
+    },
+    "rerank_ms": {
+      "p50": 0.0,
+      "p95": 1.0,
+      "p99": 1.0,
+      "avg": 0.1,
+      "min": 0.0,
+      "max": 1.0
+    },
+    "total_ms": {
+      "p50": 17838.0,
+      "p95": 23092.0,
+      "p99": 23092.0,
+      "avg": 17909.4,
+      "min": 12565.0,
+      "max": 23092.0
+    }
+  },
+  "details": [
+    {
+      "query_id": "L1",
+      "query": "茅台是哪家公司？",
+      "expected_route": "SINGLE_STEP",
+      "actual_route": "SINGLE_STEP",
+      "latency": {
+        "router_ms": 5984,
+        "rewrite_ms": 8128,
+        "retrieval_ms": 8515,
+        "rerank_ms": 0,
+        "total_ms": 22628
+      },
+      "hits_count": 3,
+      "rewritten_query": "茅台是哪家公司？",
+      "error": null
+    },
+    {
+      "query_id": "L2",
+      "query": "茅台2024年的营收是多少？",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "SINGLE_STEP",
+      "latency": {
+        "router_ms": 4927,
+        "rewrite_ms": 7875,
+        "retrieval_ms": 5035,
+        "rerank_ms": 0,
+        "total_ms": 17838
+      },
+      "hits_count": 3,
+      "rewritten_query": "茅台2024年营业收入",
+      "error": null
+    },
+    {
+      "query_id": "L3",
+      "query": "茅台和五粮液的ROE对比",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "MULTI_STEP",
+      "latency": {
+        "router_ms": 6007,
+        "rewrite_ms": 6976,
+        "retrieval_ms": 4142,
+        "rerank_ms": 0,
+        "total_ms": 17125
+      },
+      "hits_count": 3,
+      "rewritten_query": "茅台和五粮液的ROE对比",
+      "error": null
+    },
+    {
+      "query_id": "L4",
+      "query": "帮我查查这家公司的情况",
+      "expected_route": "CLARIFY",
+      "actual_route": "CLARIFY",
+      "latency": {
+        "router_ms": 6432,
+        "rewrite_ms": 5325,
+        "retrieval_ms": 4267,
+        "rerank_ms": 0,
+        "total_ms": 16025
+      },
+      "hits_count": 3,
+      "rewritten_query": "帮我查查这家公司的情况",
+      "error": null
+    },
+    {
+      "query_id": "L5",
+      "query": "茅台2024年营收是三年前的几倍？",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "MULTI_STEP",
+      "latency": {
+        "router_ms": 6476,
+        "rewrite_ms": 8582,
+        "retrieval_ms": 4480,
+        "rerank_ms": 0,
+        "total_ms": 19538
+      },
+      "hits_count": 3,
+      "rewritten_query": "茅台2024年营收是三年前的几倍？",
+      "error": null
+    },
+    {
+      "query_id": "L6",
+      "query": "五粮液的主营业务是什么？",
+      "expected_route": "SINGLE_STEP",
+      "actual_route": "SINGLE_STEP",
+      "latency": {
+        "router_ms": 5482,
+        "rewrite_ms": 8514,
+        "retrieval_ms": 4332,
+        "rerank_ms": 0,
+        "total_ms": 18329
+      },
+      "hits_count": 3,
+      "rewritten_query": "五粮液的主营业务",
+      "error": null
+    },
+    {
+      "query_id": "L7",
+      "query": "那个大公司的市值多少？",
+      "expected_route": "CLARIFY",
+      "actual_route": "CLARIFY",
+      "latency": {
+        "router_ms": 5066,
+        "rewrite_ms": 3201,
+        "retrieval_ms": 4298,
+        "rerank_ms": 0,
+        "total_ms": 12565
+      },
+      "hits_count": 3,
+      "rewritten_query": "那个大公司的市值多少？",
+      "error": null
+    },
+    {
+      "query_id": "L8",
+      "query": "茅台过去3年营收复合增长率是多少？",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "CLARIFY",
+      "latency": {
+        "router_ms": 7502,
+        "rewrite_ms": 11452,
+        "retrieval_ms": 4137,
+        "rerank_ms": 0,
+        "total_ms": 23092
+      },
+      "hits_count": 3,
+      "rewritten_query": "茅台过去3年营收复合增长率是多少？",
+      "error": null
+    },
+    {
+      "query_id": "L9",
+      "query": "主要靠什么赚钱",
+      "expected_route": "CLARIFY",
+      "actual_route": "CLARIFY",
+      "latency": {
+        "router_ms": 5253,
+        "rewrite_ms": 5318,
+        "retrieval_ms": 4143,
+        "rerank_ms": 1,
+        "total_ms": 14716
+      },
+      "hits_count": 3,
+      "rewritten_query": "主要靠什么赚钱",
+      "error": null
+    },
+    {
+      "query_id": "L10",
+      "query": "把茅台近5年的营收做成表格",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "MULTI_STEP",
+      "latency": {
+        "router_ms": 4893,
+        "rewrite_ms": 8078,
+        "retrieval_ms": 4265,
+        "rerank_ms": 0,
+        "total_ms": 17238
+      },
+      "hits_count": 3,
+      "rewritten_query": "把茅台近5年的营收做成表格",
+      "error": null
+    }
+  ]
+}

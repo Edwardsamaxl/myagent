@@ -64,7 +64,9 @@
       "Bash(\"E:\\\\CursorProject\\\\myagent\\\\docs\\\\ROUTING_EVAL_PLAN_2026-04-14.md\":*)",
       "Bash(claude plugin:*)",
       "Bash(claude:*)",
-      "Bash(exit 0:*)"
+      "Bash(exit 0:*)",
+      "Bash(MODEL_PROVIDER=ollama MODEL_NAME=qwen2.5:7b python:*)",
+      "Bash(pkill:*)"
     ]
   }
 }

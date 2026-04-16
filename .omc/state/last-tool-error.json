@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd /e/CursorProject/myagent && timeout 180 python -u -c \\\"\\nimport sys\\nsys.path.insert(0, 'src')\\nfrom agent.llm.providers import OllamaProvider\\nfrom agent.core.routing.llm_router import...",
-  "error": "Exit code 124\nStarting test...\nRouter ready\nOK [A1] 茅台是哪家公司？... exp=SINGLE_STEP got=SINGLE_STEP\nProgress: 1/30\rOK [A2] 五粮液的主营业务是什么？... exp=SINGLE_STEP got=SINGLE_STEP\nProgress: 2/30\rFAIL [A3] 茅台2024年的营收是多少？... exp=SINGLE_STEP got=MULTI_STEP\nProgress: 3/30\rFAIL [A4] 帮我查查这家白酒公司的营收增长情况... exp=SINGLE_STEP got=MULTI_STEP\nProgress: 4/30\rFAIL [A5] 上市公司600519的赚钱能力如何？... exp=SINGLE_STEP got=MULTI_STEP\nProgress: 5/30\rOK [B1] 茅台2024年的营收增长率是多少？比五粮液高多少个百分点？... exp=MULTI_STEP got=MULTI_STEP\nProgress: 6/30\rOK ...",
-  "timestamp": "2026-04-15T08:17:46.924Z",
-  "retry_count": 1
-}

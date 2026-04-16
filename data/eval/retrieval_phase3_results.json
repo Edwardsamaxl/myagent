@@ -1,0 +1,465 @@
+{
+  "timestamp": "2026-04-16T14:51:08.296616",
+  "test_cases": [
+    {
+      "id": "R1",
+      "query": "茅台是哪家公司？",
+      "gold_source_pattern": "茅台",
+      "reason": "公司介绍"
+    },
+    {
+      "id": "R2",
+      "query": "茅台2024年的营收是多少？",
+      "gold_source_pattern": "茅台",
+      "reason": "2024年报有营收数据"
+    },
+    {
+      "id": "R3",
+      "query": "茅台过去3年的营收增长情况",
+      "gold_source_pattern": "茅台",
+      "reason": "多年营收数据"
+    },
+    {
+      "id": "R4",
+      "query": "茅台的主营业务是什么",
+      "gold_source_pattern": "茅台",
+      "reason": "公司主营业务介绍"
+    },
+    {
+      "id": "R5",
+      "query": "茅台的每股收益多少",
+      "gold_source_pattern": "茅台",
+      "reason": "财务指标"
+    },
+    {
+      "id": "R6",
+      "query": "茅台的现金流情况如何",
+      "gold_source_pattern": "茅台",
+      "reason": "现金流量表"
+    },
+    {
+      "id": "R7",
+      "query": "茅台的负债情况",
+      "gold_source_pattern": "茅台",
+      "reason": "资产负债表"
+    },
+    {
+      "id": "R8",
+      "query": "贵州茅台的行业地位",
+      "gold_source_pattern": "茅台",
+      "reason": "行业分析"
+    },
+    {
+      "id": "R9",
+      "query": "茅台和五粮液的对比",
+      "gold_source_pattern": "茅台",
+      "reason": "可同时召回两者"
+    },
+    {
+      "id": "R10",
+      "query": "五粮液的主营业务是什么",
+      "gold_source_pattern": "五粮液",
+      "reason": "五粮液公司介绍"
+    },
+    {
+      "id": "R11",
+      "query": "五粮液2025年上半年营收情况",
+      "gold_source_pattern": "五粮液",
+      "reason": "2025半年度报告"
+    },
+    {
+      "id": "R12",
+      "query": "五粮液的利润增长",
+      "gold_source_pattern": "五粮液",
+      "reason": "利润数据"
+    },
+    {
+      "id": "R13",
+      "query": "五粮液的白酒产品",
+      "gold_source_pattern": "五粮液",
+      "reason": "产品介绍"
+    },
+    {
+      "id": "R14",
+      "query": "五粮液和茅台谁更赚钱",
+      "gold_source_pattern": "五粮液",
+      "reason": "两者对比"
+    },
+    {
+      "id": "R15",
+      "query": "白酒行业的发展情况",
+      "gold_source_pattern": "茅台",
+      "reason": "行业分析在茅台报告中"
+    },
+    {
+      "id": "R16",
+      "query": "白酒行业竞争格局",
+      "gold_source_pattern": "茅台",
+      "reason": "行业竞争"
+    },
+    {
+      "id": "R17",
+      "query": "茅台的护城河是什么",
+      "gold_source_pattern": "茅台",
+      "reason": "护城河分析"
+    },
+    {
+      "id": "R18",
+      "query": "茅台的股价现在多少",
+      "gold_source_pattern": "无",
+      "reason": "无股价数据-预期低召回"
+    },
+    {
+      "id": "R19",
+      "query": "五粮液的股价历史走势",
+      "gold_source_pattern": "无",
+      "reason": "无股价数据-预期低召回"
+    },
+    {
+      "id": "R20",
+      "query": "茅台2024年的分红方案",
+      "gold_source_pattern": "茅台",
+      "reason": "分红相关"
+    }
+  ],
+  "summary": {
+    "total": 20,
+    "with_data": {
+      "hit": 0.9444,
+      "mrr": 0.9074,
+      "count": 18
+    },
+    "without_data": {
+      "hit": 0.0,
+      "mrr": 0.0,
+      "count": 2
+    },
+    "overall": {
+      "hit": 0.85,
+      "mrr": 0.8167,
+      "count": 20
+    }
+  },
+  "details": [
+    {
+      "query_id": "R1",
+      "query": "茅台是哪家公司？",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R2",
+      "query": "茅台2024年的营收是多少？",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R3",
+      "query": "茅台过去3年的营收增长情况",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R4",
+      "query": "茅台的主营业务是什么",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R5",
+      "query": "茅台的每股收益多少",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R6",
+      "query": "茅台的现金流情况如何",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R7",
+      "query": "茅台的负债情况",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R8",
+      "query": "贵州茅台的行业地位",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R9",
+      "query": "茅台和五粮液的对比",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 0.0,
+      "mrr": 0.0,
+      "error": null
+    },
+    {
+      "query_id": "R10",
+      "query": "五粮液的主营业务是什么",
+      "gold_source_pattern": "五粮液",
+      "top_sources": [
+        "五粮液/test",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R11",
+      "query": "五粮液2025年上半年营收情况",
+      "gold_source_pattern": "五粮液",
+      "top_sources": [
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R12",
+      "query": "五粮液的利润增长",
+      "gold_source_pattern": "五粮液",
+      "top_sources": [
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/test"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R13",
+      "query": "五粮液的白酒产品",
+      "gold_source_pattern": "五粮液",
+      "top_sources": [
+        "五粮液/test",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R14",
+      "query": "五粮液和茅台谁更赚钱",
+      "gold_source_pattern": "五粮液",
+      "top_sources": [
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R15",
+      "query": "白酒行业的发展情况",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R16",
+      "query": "白酒行业竞争格局",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "五粮液/五粮液：2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R17",
+      "query": "茅台的护城河是什么",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 1.0,
+      "error": null
+    },
+    {
+      "query_id": "R18",
+      "query": "茅台的股价现在多少",
+      "gold_source_pattern": "无",
+      "top_sources": [
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 0.0,
+      "mrr": 0.0,
+      "error": null
+    },
+    {
+      "query_id": "R19",
+      "query": "五粮液的股价历史走势",
+      "gold_source_pattern": "无",
+      "top_sources": [
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md",
+        "五粮液/五粮液：2025年半年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 0.0,
+      "mrr": 0.0,
+      "error": null
+    },
+    {
+      "query_id": "R20",
+      "query": "茅台2024年的分红方案",
+      "gold_source_pattern": "茅台",
+      "top_sources": [
+        "同花顺/同花顺：2025年年度报告.md",
+        "同花顺/同花顺：2025年年度报告.md",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md",
+        "贵州茅台",
+        "贵州茅台/贵州茅台：贵州茅台2024年年度报告.md"
+      ],
+      "hits_count": 5,
+      "hit": 1.0,
+      "mrr": 0.3333333333333333,
+      "error": null
+    }
+  ]
+}

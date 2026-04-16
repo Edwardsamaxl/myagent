@@ -1,0 +1,252 @@
+{
+  "timestamp": "2026-04-16T17:39:37.968139",
+  "test_cases": [
+    {
+      "id": "M1",
+      "query": "贵州茅台的股票代码是多少？",
+      "route_type": "SINGLE_STEP",
+      "expected_answer": "600519",
+      "expected_company": "贵州茅台",
+      "reason": "公司基本信息，单点查询"
+    },
+    {
+      "id": "M2",
+      "query": "贵州茅台2025年上半年归属于上市公司股东的净利润是多少？",
+      "route_type": "SINGLE_STEP",
+      "expected_answer": "45402962298.10",
+      "expected_company": "贵州茅台",
+      "reason": "2025H1财务指标，单点查询"
+    },
+    {
+      "id": "M3",
+      "query": "贵州茅台2025年上半年营收同比2024年同期增长了多少？",
+      "route_type": "MULTI_STEP",
+      "expected_answer": "9.10",
+      "expected_company": "贵州茅台",
+      "reason": "跨期对比：需检索2025H1和2024H1数据并计算增长率"
+    },
+    {
+      "id": "M4",
+      "query": "贵州茅台和五粮液2025年上半年净利润对比，谁赚得更多？",
+      "route_type": "MULTI_STEP",
+      "expected_answer": "贵州茅台",
+      "expected_company": "贵州茅台",
+      "reason": "双公司对比：贵州茅台454亿 vs 五粮液195亿"
+    },
+    {
+      "id": "M5",
+      "query": "贵州茅台2024年每10股派发现金红利是多少元？",
+      "route_type": "SINGLE_STEP",
+      "expected_answer": "276.24",
+      "expected_company": "贵州茅台",
+      "reason": "分红政策，单点查询"
+    },
+    {
+      "id": "M6",
+      "query": "贵州茅台2025年上半年经营活动产生的现金流量净额同比2024年同期变化多少？",
+      "route_type": "MULTI_STEP",
+      "expected_answer": "减少64.18",
+      "expected_company": "贵州茅台",
+      "reason": "跨期现金流对比：2025H1比2024H1减少64.18%"
+    },
+    {
+      "id": "M7",
+      "query": "贵州茅台2024年基本每股收益是多少元？",
+      "route_type": "SINGLE_STEP",
+      "expected_answer": "68.64",
+      "expected_company": "贵州茅台",
+      "reason": "2024年报财务指标，单点查询"
+    },
+    {
+      "id": "M8",
+      "query": "贵州茅台和五粮液2025年上半年基本每股收益分别是多少？",
+      "route_type": "MULTI_STEP",
+      "expected_answer": "贵州茅台36.18 五粮液5.0216",
+      "expected_company": "贵州茅台",
+      "reason": "双公司财务指标对比：贵州茅台36.18 vs 五粮液5.0216"
+    },
+    {
+      "id": "M9",
+      "query": "贵州茅台2024年营业收入变动的主要原因是什么？",
+      "route_type": "SINGLE_STEP",
+      "expected_answer": "销量增加",
+      "expected_company": "贵州茅台",
+      "reason": "年报管理层讨论：销量增加及茅台酒主要产品销售价格调整"
+    },
+    {
+      "id": "M10",
+      "query": "五粮液2025年上半年营业收入是多少元？",
+      "route_type": "SINGLE_STEP",
+      "expected_answer": "52770984383.52",
+      "expected_company": "五粮液",
+      "reason": "五粮液2025H1财务指标，单点查询"
+    }
+  ],
+  "summary": {
+    "valid": 10,
+    "errors": 0,
+    "route_accuracy": 0.9,
+    "answer_accuracy": 1.0,
+    "answer_score_avg": 1.0,
+    "by_route_type": {
+      "SINGLE_STEP": {
+        "total": 6,
+        "route_correct": 5,
+        "answer_correct": 6,
+        "route_accuracy": 0.8333,
+        "answer_accuracy": 1.0,
+        "answer_score_avg": 1.0
+      },
+      "MULTI_STEP": {
+        "total": 4,
+        "route_correct": 4,
+        "answer_correct": 4,
+        "route_accuracy": 1.0,
+        "answer_accuracy": 1.0,
+        "answer_score_avg": 1.0
+      }
+    }
+  },
+  "details": [
+    {
+      "query_id": "M1",
+      "query": "贵州茅台的股票代码是多少？",
+      "expected_route": "SINGLE_STEP",
+      "actual_route": "SINGLE_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "贵州茅台的股票代码是600519。此信息来源于贵州茅台2024年年度报告。",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "数值匹配: 600519.0 ≈ 600519.0",
+      "latency_ms": 36594,
+      "error": null
+    },
+    {
+      "query_id": "M2",
+      "query": "贵州茅台2025年上半年归属于上市公司股东的净利润是多少？",
+      "expected_route": "SINGLE_STEP",
+      "actual_route": "SINGLE_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "贵州茅台2025年上半年归属于上市公司股东的净利润为454.03亿元。信息来源于贵州茅台酒股份有限公司2025年半年度报告。",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "数值匹配: 454.03 ≈ 45402962298.1",
+      "latency_ms": 42391,
+      "error": null
+    },
+    {
+      "query_id": "M3",
+      "query": "贵州茅台2025年上半年营收同比2024年同期增长了多少？",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "MULTI_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "根据提供的信息，无法直接得出贵州茅台2025年上半年营收同比2024年同期增长的具体数值。提供的半年度报告中仅包含了2025年上半年的财务数据，并未提及2024年同期的数据进行对比。\n\n相关信息摘录如下：\n- 贵州茅台酒股份有限公司2025年半年度报告显示，公司营业总收入910.94亿元，同比增长9.16%。但没有提供2024年同期的具体营收数据以供直接比较增长幅度。\n\n因此，无法仅凭现有信息计算...",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "数值匹配: 910.94 ≈ 9.1",
+      "latency_ms": 53726,
+      "error": null
+    },
+    {
+      "query_id": "M4",
+      "query": "贵州茅台和五粮液2025年上半年净利润对比，谁赚得更多？",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "MULTI_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "根据提供的信息，无法直接比较贵州茅台和五粮液2025年上半年的净利润。提供的信息仅包含贵州茅台的相关财务数据，没有关于五粮液的数据。\n\n贵州茅台2025年半年度报告中显示：\n- 归属于公司普通股股东的净利润为454.03亿元（来源：贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md）\n\n由于缺乏五粮液的相关财务数据，无法进行对比。",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "关键词匹配率 100%",
+      "latency_ms": 47575,
+      "error": null
+    },
+    {
+      "query_id": "M5",
+      "query": "贵州茅台2024年每10股派发现金红利是多少元？",
+      "expected_route": "SINGLE_STEP",
+      "actual_route": "SINGLE_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "贵州茅台2024年每10股派发现金红利为276.24元（含税）。此信息来源于贵州茅台2024年年度报告。",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "数值匹配: 276.24 ≈ 276.24",
+      "latency_ms": 41992,
+      "error": null
+    },
+    {
+      "query_id": "M6",
+      "query": "贵州茅台2025年上半年经营活动产生的现金流量净额同比2024年同期变化多少？",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "MULTI_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "贵州茅台2025年上半年经营活动产生的现金流量净额为95,086,614,960.23元，而2024年同期为87,093,638,361.68元。根据报告中的信息，经营活动产生的现金流量净额减少主要是因为公司控股子公司贵州茅台集团财务有限公司吸收集团公司成员单位存款减少及存放中央银行法定准备金和不可提前支取的同业存款增加。\n\n来源：贵州茅台酒股份有限公司2025年半年度报告",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "数值匹配: 95086614960.23 ≈ 64.18",
+      "latency_ms": 51077,
+      "error": null
+    },
+    {
+      "query_id": "M7",
+      "query": "贵州茅台2024年基本每股收益是多少元？",
+      "expected_route": "SINGLE_STEP",
+      "actual_route": "SINGLE_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "贵州茅台2024年的基本每股收益是68.64元/股。此数据来源于贵州茅台酒股份有限公司2024年年度报告。",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "数值匹配: 68.64 ≈ 68.64",
+      "latency_ms": 40390,
+      "error": null
+    },
+    {
+      "query_id": "M8",
+      "query": "贵州茅台和五粮液2025年上半年基本每股收益分别是多少？",
+      "expected_route": "MULTI_STEP",
+      "actual_route": "MULTI_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "贵州茅台2025年上半年的基本每股收益为36.18元/股，来源于贵州茅台2025年半年度报告。\n\n五粮液2025年上半年的基本每股收益为5.0216元/股，来源于五粮液2025年半年度报告。",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "数值匹配: 5.0216 ≈ 5.0216",
+      "latency_ms": 43209,
+      "error": null
+    },
+    {
+      "query_id": "M9",
+      "query": "贵州茅台2024年营业收入变动的主要原因是什么？",
+      "expected_route": "SINGLE_STEP",
+      "actual_route": "MULTI_STEP",
+      "route_correct": false,
+      "hits_count": 3,
+      "response": "根据提供的信息，贵州茅台2024年营业收入变动的主要原因是本期销量增加。这一原因在《贵州茅台酒股份有限公司2024年年度报告》中有所提及。\n\n参考来源：\n[3] 来源: 贵州茅台/贵州茅台：贵州茅台2025年半年度报告.md",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "语义匹配: 增长方向正确",
+      "latency_ms": 43183,
+      "error": null
+    },
+    {
+      "query_id": "M10",
+      "query": "五粮液2025年上半年营业收入是多少元？",
+      "expected_route": "SINGLE_STEP",
+      "actual_route": "SINGLE_STEP",
+      "route_correct": true,
+      "hits_count": 3,
+      "response": "五粮液2025年上半年的营业收入为52,770,984,383.52元。此数据来源于《宜宾五粮液股份有限公司2025年半年度报告》。",
+      "answer_correct": true,
+      "answer_score": 1.0,
+      "evaluation_detail": "数值匹配: 52770984383.52 ≈ 52770984383.52",
+      "latency_ms": 41307,
+      "error": null
+    }
+  ]
+}

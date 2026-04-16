@@ -483,7 +483,7 @@ class HuggingFaceReranker:
         pairs = [[query, doc] for doc in documents]
 
         try:
-            scores = encoder.predict(pairs, show_progress_bar=False, apply_softmax=True)
+            scores = encoder.predict(pairs, show_progress_bar=False, apply_softmax=False)
         except Exception as exc:
             logger.warning(f"[HuggingFaceReranker] 预测失败: {exc}，跳过重排。")
             return hits, []
